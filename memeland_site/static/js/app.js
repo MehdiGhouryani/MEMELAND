@@ -1,5 +1,5 @@
 /**
- * MemeLand App Controller (Production Stable v5.6.0)
+ * MemeLand Core Controller (Ultra-Lightweight v5.8.0)
  */
 
 const App = {
@@ -19,53 +19,37 @@ const App = {
   },
 
   async init() {
-    try {
-      if (window.TGBridge) TGBridge.init();
-    } catch (e) {
-      console.warn('TGBridge init error:', e);
-    }
-
+    if (window.TGBridge) TGBridge.init();
     this.startSplashTicker();
     const safetyTimer = setTimeout(() => this.hideSplash(), 3000);
 
     try {
-      // ۱. احراز هویت نشست
       let session = null;
       try {
         session = await API.authenticateWebApp();
         if (!session) session = await API.getSession();
-      } catch (e) {
-        console.warn('Auth fallback:', e);
-      }
+      } catch (e) {}
       this.state.session = session;
 
-      // ۲. بارگذاری سیگنال‌ها
       await this.loadSignals();
-
-      // ۳. به‌روزرسانی رابط کاربری و پروفایل
       this.updateUserInterface();
-      this.renderCurrentView();
+      Views.renderCurrent();
 
-      // ۴. راه‌اندازی امن Pull-to-Refresh در انتهای کار
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
-        try {
-          PullRefresh.init('#tab-signals', async (isSilent) => {
-            await App.loadSignals();
-            App.renderSignalsList();
-            if (!isSilent) {
-              const freshSession = await API.getSession();
-              if (freshSession) {
-                App.state.session = freshSession;
-                App.updateUserInterface();
-              }
+        PullRefresh.init('#tab-signals', async (isSilent) => {
+          await App.loadSignals();
+          Views.renderSignalsList();
+          if (!isSilent) {
+            const fresh = await API.getSession();
+            if (fresh) {
+              App.state.session = fresh;
+              App.updateUserInterface();
             }
-          });
-        } catch (err) {
-          console.warn('PullRefresh init failed silently:', err);
-        }
+          }
+        });
       }
     } catch (err) {
-      console.error('Core init error:', err);
+      console.error('Init error:', err);
     } finally {
       clearTimeout(safetyTimer);
       setTimeout(() => this.hideSplash(), 300);
@@ -75,12 +59,7 @@ const App = {
   startSplashTicker() {
     const statusEl = document.getElementById('splashStatusText');
     if (!statusEl) return;
-    const steps = [
-      'در حال اتصال به شبکه آلفا...',
-      'اسکن پامپ‌های دکس و سولانا...',
-      'همگام‌سازی سهمیه و سیگنال‌ها...',
-      'آماده‌سازی تیکرهای زنده...'
-    ];
+    const steps = ['در حال اتصال به شبکه آلفا...', 'اسکن پامپ‌های دکس...', 'همگام‌سازی سهمیه...'];
     let idx = 0;
     this._splashInterval = setInterval(() => {
       idx = (idx + 1) % steps.length;
@@ -105,46 +84,30 @@ const App = {
     const profileQuota = document.getElementById('profileQuotaText');
     const adminSec = document.getElementById('adminPanelSection');
     const adminFab = document.getElementById('adminFabBtn');
-    
     const avatarFrame = document.getElementById('profileAvatarFrame');
     const avatarContainer = document.getElementById('avatarSvgContainer');
     const avatarMiniBadge = document.getElementById('avatarMiniBadge');
 
-    const tid = s ? (s.telegram_id || (s.user && s.user.id) || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id)) : null;
+    const tid = s ? (s.telegram_id || s.user?.id || window.Telegram?.WebApp?.initDataUnsafe?.user?.id) : null;
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-
-    const displayName = (s && s.display_name) ||
-                        (s && s.user && s.user.first_name) ||
-                        (s && s.first_name) ||
-                        (tgUser && tgUser.first_name) ||
-                        'کاربر تلگرام';
-
-    const username = (s && s.username) ||
-                     (s && s.user && s.user.username) ||
-                     (tgUser && tgUser.username) ||
-                     null;
-
+    const displayName = s?.display_name || s?.user?.first_name || s?.first_name || tgUser?.first_name || 'کاربر تلگرام';
+    const username = s?.username || s?.user?.username || tgUser?.username || null;
     const isAdmin = Boolean(s && (s.role === 'admin' || s.is_admin === true));
-    const quota = (s && s.quota) ? s.quota : null;
+    const quota = s?.quota || null;
 
     let roleKey = 'rookie';
-    if (isAdmin) {
-      roleKey = (quota && quota.is_super_admin) ? 'super_admin' : 'admin';
-    } else if (quota && quota.role_key) {
-      roleKey = quota.role_key;
-    }
+    if (isAdmin) roleKey = quota?.is_super_admin ? 'super_admin' : 'admin';
+    else if (quota?.role_key) roleKey = quota.role_key;
+    else if (s?.role === 'admin') roleKey = 'admin';
 
-    // رندر مستقیم و مستقل وکتور آواتار
-    if (avatarContainer) {
-      if (window.AvatarRenderer && typeof AvatarRenderer.getAvatarSvg === 'function') {
-        avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
-        if (avatarMiniBadge) avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
-      } else {
-        avatarContainer.innerHTML = '<div style="font-size:38px; display:flex; align-items:center; justify-content:center; height:100%;">🐸</div>';
-      }
-      if (avatarFrame) {
-        avatarFrame.className = `avatar-frame theme-${roleKey}`;
-      }
+    if (avatarContainer && window.AvatarRenderer) {
+      avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
+    }
+    if (avatarMiniBadge && window.AvatarRenderer) {
+      avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
+    }
+    if (avatarFrame) {
+      avatarFrame.className = `avatar-frame theme-${roleKey}`;
     }
 
     if (s && (tid || s.token)) {
@@ -152,39 +115,18 @@ const App = {
       if (profileName) profileName.textContent = displayName;
       if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
       if (profileId) profileId.textContent = tid ? String(tid) : '—';
+      if (profileRole && quota) profileRole.textContent = quota.display_role || 'عضو رسمی';
+      if (profileQuota && quota) profileQuota.textContent = `${quota.signals_today || 0} از ${quota.daily_limit || 5} مصرف شده`;
 
-      if (profileRole && quota) {
-        profileRole.textContent = quota.display_role || 'عضو رسمی';
-      }
-      if (profileQuota && quota) {
-        profileQuota.textContent = `${quota.signals_today || 0} از ${quota.daily_limit || 5} مصرف شده`;
-      }
-
-      if (isAdmin) {
-        if (headerAdmin) headerAdmin.style.display = 'inline-block';
-        if (adminSec) adminSec.style.display = 'block';
-        if (adminFab) adminFab.style.display = 'flex';
-      } else {
-        if (headerAdmin) headerAdmin.style.display = 'none';
-        if (adminSec) adminSec.style.display = 'none';
-        if (adminFab) adminFab.style.display = 'none';
-      }
-    } else {
-      if (headerName) headerName.textContent = 'مهمان';
-      if (profileName) profileName.textContent = 'کاربر مهمان';
-      if (profileUser) profileUser.textContent = 'بدون نشست تلگرام';
-      if (profileId) profileId.textContent = '—';
-      if (profileRole) profileRole.textContent = 'فقط خواندنی';
-      if (headerAdmin) headerAdmin.style.display = 'none';
-      if (adminSec) adminSec.style.display = 'none';
-      if (adminFab) adminFab.style.display = 'none';
+      if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
+      if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
+      if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
     }
   },
 
   switchTab(tabName) {
     if (window.TGBridge) TGBridge.haptic('selection');
     this.state.currentTab = tabName;
-
     document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.bottom-nav .nav-btn').forEach(el => el.classList.remove('active'));
 
@@ -196,17 +138,15 @@ const App = {
     if (navBtn) navBtn.classList.add('active');
 
     if (window.TGBridge) TGBridge.syncBackButton(tabName !== 'signals');
-    this.renderCurrentView();
+    Views.renderCurrent();
   },
 
   setSignalSubTab(subTab) {
     if (window.TGBridge) TGBridge.haptic('selection');
     this.state.signalSubTab = subTab;
-    const subActive = document.getElementById('subTabActive');
-    const subClosed = document.getElementById('subTabClosed');
-    if (subActive) subActive.classList.toggle('active', subTab === 'active');
-    if (subClosed) subClosed.classList.toggle('active', subTab === 'closed');
-    this.renderSignalsList();
+    document.getElementById('subTabActive')?.classList.toggle('active', subTab === 'active');
+    document.getElementById('subTabClosed')?.classList.toggle('active', subTab === 'closed');
+    Views.renderSignalsList();
   },
 
   setCategory(cat) {
@@ -215,12 +155,12 @@ const App = {
     document.querySelectorAll('#catFilterChips .chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
     });
-    this.renderSignalsList();
+    Views.renderSignalsList();
   },
 
   onSearchInput(val) {
     this.state.searchQuery = (val || '').trim().toLowerCase();
-    this.renderSignalsList();
+    Views.renderSignalsList();
   },
 
   async loadSignals() {
@@ -232,481 +172,6 @@ const App = {
     } catch (e) {
       this.state.signals = [];
     }
-  },
-
-  renderCurrentView() {
-    if (this.state.currentTab === 'signals') {
-      this.renderSignalsList();
-    } else if (this.state.currentTab === 'leaderboard') {
-      this.renderLeaderboard();
-    } else if (this.state.currentTab === 'academy') {
-      this.renderAcademy();
-    }
-  },
-
-  renderSignalsList() {
-    const listEl = document.getElementById('signalsFeedList');
-    if (!listEl) return;
-
-    const isClosed = this.state.signalSubTab === 'closed';
-
-    let list = (this.state.signals || []).filter(s => {
-      const matchStatus = isClosed
-        ? (s.outcome_status === 'win' || s.outcome_status === 'loss')
-        : (s.outcome_status === 'open');
-      const matchCat = this.state.category === 'all' || s.channel === this.state.category;
-      const matchSearch = !this.state.searchQuery || (s.coin && s.coin.toLowerCase().includes(this.state.searchQuery));
-      return matchStatus && matchCat && matchSearch;
-    });
-
-    if (list.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center; padding:36px; color:var(--text-muted); font-size:12px;">سیگنالی یافت نشد.</div>';
-      return;
-    }
-
-    listEl.innerHTML = list.map(s => {
-      const roiClass = s.outcome_status === 'win' ? 'roi-win' : (s.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
-      const roiText = s.result ? s.result : (s.outcome_status === 'open' ? 'درحال معامله' : '—');
-      const caller = s.caller_name || s.owner_first_name || 'آلفا';
-      const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
-
-      const caPart = s.contract_address
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
-        : '';
-
-      // باز شدن تضمینی پرونده تریدر
-      const callerPart = callerId
-        ? `<span class="caller-chip" onclick="event.stopPropagation(); App.openTraderDossier(${callerId})" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--teal);">👤 ${caller}</span>`
-        : `<span>👤 ${caller}</span>`;
-
-      return `
-        <div class="card-atomic" onclick="App.openSignalDetails(${s.id})">
-          <div class="card-atomic-top">
-            <div class="token-meta">
-              <span class="token-name">${s.coin || '—'}</span>
-              <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
-              ${s.tier === 'vip' ? '<span class="badge-vip">VIP</span>' : ''}
-            </div>
-            <div class="roi-badge ${roiClass}">${roiText}</div>
-          </div>
-          <div class="card-atomic-bottom">
-            ${callerPart}
-            ${caPart}
-          </div>
-        </div>
-      `;
-    }).join('');
-  },
-
-  openTraderDossier(userId) {
-    if (window.Dossier && typeof Dossier.show === 'function') {
-      Dossier.show(userId);
-    } else {
-      console.warn('Dossier module not ready for ID:', userId);
-    }
-  },
-
-  openSignalDetails(signalId) {
-    if (window.TGBridge) TGBridge.haptic('light');
-    const s = (this.state.signals || []).find(item => item.id === signalId);
-    if (!s) return;
-
-    const isAdmin = Boolean(this.state.session && (this.state.session.role === 'admin' || this.state.session.is_admin === true));
-    const body = document.getElementById('sheetContent');
-    if (!body) return;
-
-    body.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:17px;">${s.coin || '—'}</h3>
-        <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
-      </div>
-      
-      ${s.contract_address ? `
-        <div style="background:var(--bg); padding:9px 12px; border-radius:10px; margin-bottom:12px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="mono">${s.contract_address}</span>
-          <button class="btn btn-teal" style="width:auto; padding:4px 9px; font-size:10px;" onclick="if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">کپی CA</button>
-        </div>` : ''
-      }
-
-      ${s.note ? `<p style="font-size:12px; line-height:1.8; color:var(--text-muted); margin-bottom:14px;">${s.note}</p>` : ''}
-      
-      ${s.buy_link ? `<a href="${s.buy_link}" target="_blank" class="btn btn-primary" style="margin-bottom:10px;">خرید مستقیم در دکس ↗</a>` : ''}
-
-      ${isAdmin ? `
-        <div class="admin-actions-grid" style="border-top:1px solid var(--border); padding-top:12px; margin-top:14px;">
-          <button class="btn btn-secondary" onclick="App.openUpdateResult(${s.id})">🎯 ثبت نتیجه</button>
-          <button class="btn btn-secondary" style="color:var(--red);" onclick="App.deleteSignalAction(${s.id})">🗑️ حذف سیگنال</button>
-        </div>` : ''
-      }
-    `;
-
-    const sheet = document.getElementById('bottomSheet');
-    if (sheet) sheet.classList.add('show');
-    if (window.TGBridge) TGBridge.syncBackButton(true);
-  },
-
-  closeBottomSheet() {
-    const sheet = document.getElementById('bottomSheet');
-    if (sheet) sheet.classList.remove('show');
-    if (window.TGBridge) TGBridge.syncBackButton(this.state.currentTab !== 'signals');
-  },
-
-  // ================= تب لیدربورد =================
-  setLeaderboardType(type) {
-    if (window.TGBridge) TGBridge.haptic('selection');
-    this.state.leaderboardType = type;
-    const btnCallers = document.getElementById('btnLbCallers');
-    const btnGivers = document.getElementById('btnLbGivers');
-    if (btnCallers) btnCallers.classList.toggle('active', type === 'callers');
-    if (btnGivers) btnGivers.classList.toggle('active', type === 'signal_givers');
-    this.renderLeaderboard();
-  },
-
-  async renderLeaderboard() {
-    const listEl = document.getElementById('leaderboardFeedList');
-    if (!listEl) return;
-
-    if (!this.state.leaderboardData || (!this.state.leaderboardData.callers?.length && !this.state.leaderboardData.signal_givers?.length)) {
-      listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال بارگذاری رتبه‌بندی...</div>';
-      try {
-        this.state.leaderboardData = await API.getLeaderboard();
-      } catch (e) {
-        this.state.leaderboardData = { callers: [], signal_givers: [] };
-      }
-    }
-
-    const isCallers = this.state.leaderboardType === 'callers';
-    const rows = isCallers ? (this.state.leaderboardData?.callers || []) : (this.state.leaderboardData?.signal_givers || []);
-
-    if (!rows || rows.length === 0) {
-      listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">هنوز رتبه‌ای ثبت نشده است.</div>`;
-      return;
-    }
-
-    if (isCallers) {
-      listEl.innerHTML = rows.map((r, i) => `
-        <div class="card-atomic" style="cursor:default;">
-          <div class="card-atomic-top">
-            <div class="token-meta">
-              <span class="mono" style="color:var(--teal); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">👤 ${r.caller_name || 'ناشناس'}</span>
-            </div>
-            <span style="color:var(--gold); font-size:12.5px; font-weight:700;">★ ${r.avg_rating || '5.0'}</span>
-          </div>
-          <div class="card-atomic-bottom">
-            <span>${r.count || 0} کال ثبت‌شده</span>
-            <span>${r.tier ? r.tier.toUpperCase() : 'BRONZE'}</span>
-          </div>
-        </div>
-      `).join('');
-    } else {
-      listEl.innerHTML = rows.map((r, i) => `
-        <div class="card-atomic" style="cursor:default;">
-          <div class="card-atomic-top">
-            <div class="token-meta">
-              <span class="mono" style="color:var(--pink, #ec4899); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">📡 ${r.full_name || r.username || 'کاربر'}</span>
-            </div>
-            <span style="color:var(--teal); font-size:12.5px; font-weight:700;">${r.points || 0} pt</span>
-          </div>
-          <div class="card-atomic-bottom">
-            <span>${r.count || 0} سیگنال · ${r.wins || 0} برد</span>
-            <span>سطح ${r.level || 1}</span>
-          </div>
-        </div>
-      `).join('');
-    }
-  },
-
-  // ================= تب آکادمی =================
-  setAcademySubTab(subTab) {
-    if (window.TGBridge) TGBridge.haptic('selection');
-    this.state.academyTab = subTab;
-    const btnStrat = document.getElementById('btnAcadStrat');
-    const btnArt = document.getElementById('btnAcadArt');
-    if (btnStrat) btnStrat.classList.toggle('active', subTab === 'strategies');
-    if (btnArt) btnArt.classList.toggle('active', subTab === 'articles');
-    this.renderAcademy();
-  },
-
-  async renderAcademy() {
-    const listEl = document.getElementById('academyFeedList');
-    if (!listEl) return;
-
-    if (this.state.academyTab === 'strategies') {
-      if (!this.state.strategies || !this.state.strategies.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت ستاپ‌ها...</div>';
-        try {
-          this.state.strategies = await API.getContent('strategies');
-        } catch (e) {
-          this.state.strategies = [];
-        }
-      }
-
-      if (!this.state.strategies || this.state.strategies.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">ستاپ تحلیلی ثبت نشده است.</div>';
-        return;
-      }
-
-      listEl.innerHTML = this.state.strategies.map(st => `
-        <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--text);">${st.title || 'ستاپ معاملاتی'}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.7;">${st.desc || st.body || ''}</p>
-        </div>
-      `).join('');
-    } else {
-      if (!this.state.articles || !this.state.articles.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
-        try {
-          this.state.articles = await API.getContent('articles');
-        } catch (e) {
-          this.state.articles = [];
-        }
-      }
-
-      if (!this.state.articles || this.state.articles.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
-        return;
-      }
-
-      listEl.innerHTML = this.state.articles.map(art => `
-        <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--teal);">${art.title || 'مقاله آموزشی'}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.8; white-space:pre-line;">${art.body || art.desc || ''}</p>
-        </div>
-      `).join('');
-    }
-  },
-
-  // ================= مدال مدیریت کادر =================
-  async openManageStaffModal() {
-    if (window.TGBridge) TGBridge.haptic('selection');
-    document.getElementById('modalTitle').textContent = 'مدیریت ادمین‌ها و نقش‌ها';
-    document.getElementById('modalBody').innerHTML = `
-      <div style="margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
-        <h5 style="font-size:12px; margin-bottom:8px; color:var(--teal);">افزودن عضو جدید</h5>
-        <div class="field"><label>شناسه عددی تلگرام (User ID):</label><input id="staffUserId" placeholder="مثلاً 123456789"></div>
-        <div class="field"><label>انتخاب نقش:</label><select id="staffRole">
-          <option value="admin">👑 Admin (مدیر کامل)</option>
-          <option value="vip_helper">💎 VIP Helper (کمک‌ادمین)</option>
-          <option value="og">👑 Memeland OG (۵۰ سیگنال)</option>
-          <option value="alpha">🚀 Memeland Alpha Master (۱۵ سیگنال)</option>
-          <option value="guardian">🦈 Memeland Guardian (۸ سیگنال)</option>
-          <option value="explorer">🐸 Memeland Explorer (۵ سیگنال)</option>
-        </select></div>
-        <button class="btn btn-primary" onclick="App.submitAddStaff()">اعطای دسترسی</button>
-      </div>
-      <div>
-        <h5 style="font-size:12px; margin-bottom:8px;">لیست کادر فعلی</h5>
-        <div id="staffListContainer" style="display:flex; flex-direction:column; gap:6px;">
-          <div style="font-size:11px; color:var(--text-muted);">در حال بارگذاری...</div>
-        </div>
-      </div>
-    `;
-    document.getElementById('modalOverlay').classList.add('show');
-    await this.loadStaffList();
-  },
-
-  async loadStaffList() {
-    const cont = document.getElementById('staffListContainer');
-    try {
-      const resp = await fetch('/site/staff', { headers: API.getHeaders() });
-      if (!resp.ok) throw new Error();
-      const list = await resp.json();
-      this.state.staffList = list;
-
-      if (!list.length) {
-        cont.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">عضوی در دیتابیس ثبت نشده است.</div>';
-        return;
-      }
-
-      cont.innerHTML = list.map(item => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); padding:8px 10px; border-radius:8px; font-size:11px;">
-          <div>
-            <span class="mono" style="font-weight:700;">${item.user_id}</span>
-            <span style="color:var(--text-muted); margin-right:6px;">(${item.role})</span>
-          </div>
-          ${!item.is_super ? `<button class="btn btn-secondary" style="width:auto; padding:2px 8px; color:var(--red); font-size:10px;" onclick="App.removeStaffAction(${item.user_id})">حذف</button>` : '<span style="font-size:10px; color:var(--gold);">Super</span>'}
-        </div>
-      `).join('');
-    } catch (e) {
-      cont.innerHTML = '<div style="font-size:11px; color:var(--red);">خطا در دریافت لیست</div>';
-    }
-  },
-
-  async submitAddStaff() {
-    const uid = document.getElementById('staffUserId').value.trim();
-    const role = document.getElementById('staffRole').value;
-    if (!uid || !/^\d+$/.test(uid)) {
-      if (window.TGBridge) TGBridge.showAlert('شناسه عددی باید عدد باشد');
-      return;
-    }
-
-    const resp = await fetch('/site/staff', {
-      method: 'POST',
-      headers: API.getHeaders(),
-      body: JSON.stringify({ user_id: parseInt(uid), role })
-    });
-
-    if (resp.ok) {
-      if (window.TGBridge) {
-        TGBridge.haptic('success');
-        TGBridge.showAlert('نقش با موفقیت اعمال شد');
-      }
-      await this.loadStaffList();
-    } else {
-      if (window.TGBridge) {
-        TGBridge.haptic('error');
-        TGBridge.showAlert('خطا در ثبت نقش');
-      }
-    }
-  },
-
-  async removeStaffAction(uid) {
-    if (window.TGBridge) {
-      const conf = await TGBridge.showConfirm(`آیا از خلع دسترسی کاربر ${uid} مطمئن هستید؟`);
-      if (!conf) return;
-    }
-
-    const resp = await fetch(`/site/staff/${uid}`, {
-      method: 'DELETE',
-      headers: API.getHeaders()
-    });
-
-    if (resp.ok) {
-      if (window.TGBridge) TGBridge.haptic('success');
-      await this.loadStaffList();
-    } else {
-      if (window.TGBridge) {
-        TGBridge.haptic('error');
-        TGBridge.showAlert('امکان حذف این کاربر وجود ندارد');
-      }
-    }
-  },
-
-  // ================= مدال ثبت سیگنال =================
-  openAddSignalModal() {
-    if (window.TGBridge) TGBridge.haptic('selection');
-    document.getElementById('modalTitle').textContent = 'ثبت سیگنال جدید';
-    document.getElementById('modalBody').innerHTML = `
-      <div class="field"><label>نماد دارایی (کوین):</label><input id="newCoin" placeholder="مثلاً $PEPE یا SOL"></div>
-      <div class="field"><label>شبکه / کتگوری:</label><select id="newChannel">
-        <option value="dex">دکس (Solana / EVM)</option>
-        <option value="alt">آلت‌کوین</option>
-        <option value="stock">سهام جهانی</option>
-        <option value="irbourse">بورس ایران</option>
-      </select></div>
-      <div class="field"><label>آدرس کانترکت (CA):</label><input id="newCA" placeholder="آدرس کانترکت"></div>
-      <div class="field"><label>لینک خرید (GMGN / Raydium):</label><input id="newBuyLink" placeholder="https://..."></div>
-      <div class="field"><label>توضیح / تارگت‌ها:</label><textarea id="newNote" rows="3"></textarea></div>
-      <button class="btn btn-primary" onclick="App.submitNewSignal()">ثبت نهایی</button>
-    `;
-    document.getElementById('modalOverlay').classList.add('show');
-  },
-
-  async submitNewSignal() {
-    const coin = document.getElementById('newCoin').value.trim();
-    if (!coin) {
-      if (window.TGBridge) TGBridge.showAlert('نماد کوین الزامی است');
-      return;
-    }
-
-    const payload = {
-      coin,
-      channel: document.getElementById('newChannel').value,
-      contract_address: document.getElementById('newCA').value.trim() || null,
-      buy_link: document.getElementById('newBuyLink').value.trim() || null,
-      note: document.getElementById('newNote').value.trim() || null,
-      tier: 'free',
-      outcome_status: 'open'
-    };
-
-    const res = await API.createSignal(payload);
-    if (res.ok) {
-      if (window.TGBridge) TGBridge.haptic('success');
-      this.closeModal();
-      await this.loadSignals();
-      this.renderSignalsList();
-      const session = await API.getSession();
-      if (session) {
-        this.state.session = session;
-        this.updateUserInterface();
-      }
-    } else {
-      const data = await res.json().catch(() => ({}));
-      if (window.TGBridge) {
-        TGBridge.haptic('error');
-        TGBridge.showAlert(data.error || 'خطا در ثبت سیگنال');
-      }
-    }
-  },
-
-  openUpdateResult(signalId) {
-    if (window.TGBridge) TGBridge.haptic('selection');
-    this.closeBottomSheet();
-    const s = (this.state.signals || []).find(item => item.id === signalId);
-    if (!s) return;
-
-    document.getElementById('modalTitle').textContent = `نتیجه برای ${s.coin || ''}`;
-    document.getElementById('modalBody').innerHTML = `
-      <div class="field">
-        <label>درصد سود یا متن نتیجه:</label>
-        <input id="updResult" value="${s.result || ''}" placeholder="مثلاً +250% یا تارگت ۲">
-      </div>
-      <div class="field">
-        <label>وضعیت نهایی پوزیشن:</label>
-        <select id="updStatus">
-          <option value="win" ${s.outcome_status === 'win' ? 'selected' : ''}>✅ برد (Win)</option>
-          <option value="loss" ${s.outcome_status === 'loss' ? 'selected' : ''}>❌ باخت (Loss)</option>
-          <option value="open" ${s.outcome_status === 'open' ? 'selected' : ''}>⏳ باز (Open)</option>
-        </select>
-      </div>
-      <button class="btn btn-primary" onclick="App.submitUpdateResult(${s.id})">ثبت نتیجه</button>
-    `;
-    document.getElementById('modalOverlay').classList.add('show');
-  },
-
-  async submitUpdateResult(signalId) {
-    const result = document.getElementById('updResult').value.trim();
-    const status = document.getElementById('updStatus').value;
-
-    const res = await API.updateSignalResult(signalId, result, status);
-    if (res.ok) {
-      if (window.TGBridge) TGBridge.haptic('success');
-      this.closeModal();
-      await this.loadSignals();
-      this.renderSignalsList();
-    } else {
-      if (window.TGBridge) {
-        TGBridge.haptic('error');
-        TGBridge.showAlert('خطا در ثبت نتیجه');
-      }
-    }
-  },
-
-  async deleteSignalAction(id) {
-    if (window.TGBridge) {
-      const conf = await TGBridge.showConfirm('آیا از حذف این سیگنال مطمئن هستید؟');
-      if (!conf) return;
-    }
-
-    const resp = await API.deleteSignal(id);
-    if (resp.ok) {
-      if (window.TGBridge) TGBridge.haptic('success');
-      this.closeBottomSheet();
-      await this.loadSignals();
-      this.renderSignalsList();
-    } else {
-      if (window.TGBridge) {
-        TGBridge.haptic('error');
-        TGBridge.showAlert('خطا در حذف سیگنال');
-      }
-    }
-  },
-
-  closeModal() {
-    const modal = document.getElementById('modalOverlay');
-    if (modal) modal.classList.remove('show');
   }
 };
 

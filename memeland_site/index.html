@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- استایل‌های اصلی، تم نئونی و رفرش کشویی -->
-  <link rel="stylesheet" href="/static/css/style.css?v=5.6.0">
-  <link rel="stylesheet" href="/static/css/roles.css?v=5.6.0">
-  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=5.6.0">
+  <!-- استایل‌های اصلی، تم نئونی نقش‌ها و رفرش کشویی -->
+  <link rel="stylesheet" href="/static/css/style.css?v=5.8.0">
+  <link rel="stylesheet" href="/static/css/roles.css?v=5.8.0">
+  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=5.8.0">
 </head>
 <body>
 
@@ -112,8 +112,8 @@
     <!-- تب ۲: لیدربورد -->
     <section id="tab-leaderboard" class="tab-view">
       <div class="view-switch">
-        <button class="switch-btn active" id="btnLbCallers" onclick="App.setLeaderboardType('callers')">🏆 برترین کالرها</button>
-        <button class="switch-btn" id="btnLbGivers" onclick="App.setLeaderboardType('signal_givers')">📡 سیگنال‌دهندگان</button>
+        <button class="switch-btn active" id="btnLbCallers" onclick="Views.setLeaderboardType('callers')">🏆 برترین کالرها</button>
+        <button class="switch-btn" id="btnLbGivers" onclick="Views.setLeaderboardType('signal_givers')">📡 سیگنال‌دهندگان</button>
       </div>
       <div id="leaderboardFeedList" class="cards-feed"></div>
     </section>
@@ -121,8 +121,8 @@
     <!-- تب ۳: آکادمی -->
     <section id="tab-academy" class="tab-view">
       <div class="view-switch">
-        <button class="switch-btn active" id="btnAcadStrat" onclick="App.setAcademySubTab('strategies')">🧩 ستاپ‌ها</button>
-        <button class="switch-btn" id="btnAcadArt" onclick="App.setAcademySubTab('articles')">📝 مقالات</button>
+        <button class="switch-btn active" id="btnAcadStrat" onclick="Views.setAcademySubTab('strategies')">🧩 ستاپ‌ها</button>
+        <button class="switch-btn" id="btnAcadArt" onclick="Views.setAcademySubTab('articles')">📝 مقالات</button>
       </div>
       <div id="academyFeedList" class="cards-feed"></div>
     </section>
@@ -161,15 +161,16 @@
       <div id="adminPanelSection" class="card admin-box" style="display:none;">
         <div class="admin-box-title">⚙️ پنل مدیریت ارشد</div>
         <div class="admin-actions-grid">
-          <button class="btn btn-primary" onclick="App.openAddSignalModal()">➕ ثبت سیگنال</button>
-          <button class="btn btn-secondary" onclick="App.openManageStaffModal()">👥 مدیریت ادمین‌ها</button>
+          <button class="btn btn-primary" onclick="Modals.openAddSignalModal()">➕ ثبت سیگنال</button>
+          <button class="btn btn-secondary" onclick="Modals.openManageStaffModal()">👥 مدیریت ادمین‌ها</button>
         </div>
       </div>
     </section>
 
   </main>
 
-  <button id="adminFabBtn" class="admin-fab" onclick="App.openAddSignalModal()" style="display:none;">
+  <!-- دکمه شناور ثبت سیگنال (FAB) -->
+  <button id="adminFabBtn" class="admin-fab" onclick="Modals.openAddSignalModal()" style="display:none;">
     <span>➕</span>
   </button>
 
@@ -180,30 +181,34 @@
     <button class="nav-btn" onclick="App.switchTab('profile')"><span class="nav-icon">👤</span><span class="nav-label">پروفایل</span></button>
   </nav>
 
+  <!-- باتم‌شیت جزئیات و پرونده -->
   <div id="bottomSheet" class="bottom-sheet">
-    <div class="sheet-backdrop" onclick="App.closeBottomSheet()"></div>
+    <div class="sheet-backdrop" onclick="Views.closeBottomSheet()"></div>
     <div class="sheet-surface">
       <div class="sheet-drag-handle"></div>
       <div id="sheetContent" class="sheet-content"></div>
     </div>
   </div>
 
+  <!-- مودال پاپ‌آپ وسط صفحه -->
   <div id="modalOverlay" class="modal-overlay">
     <div class="modal-box">
       <div class="modal-head">
         <h4 id="modalTitle">ثبت اطلاعات</h4>
-        <button class="btn-close" onclick="App.closeModal()">✕</button>
+        <button class="btn-close" onclick="Modals.closeModal()">✕</button>
       </div>
       <div id="modalBody" class="modal-body"></div>
     </div>
   </div>
 
-  <!-- ترتیب لودینگ کاملاً ایزوله و بدون تکرار -->
-  <script src="/static/js/telegram.js?v=5.6.0"></script>
-  <script src="/static/js/api.js?v=5.6.0"></script>
-  <script src="/static/js/avatars.js?v=5.6.0"></script>
-  <script src="/static/js/dossier.js?v=5.6.0"></script>
-  <script src="/static/js/pull_refresh.js?v=5.6.0"></script>
-  <script src="/static/js/app.js?v=5.6.0"></script>
+  <!-- بارگذاری ترتیبی اسکریپت‌های ماژولار -->
+  <script src="/static/js/telegram.js?v=5.8.0"></script>
+  <script src="/static/js/api.js?v=5.8.0"></script>
+  <script src="/static/js/avatars.js?v=5.8.0"></script>
+  <script src="/static/js/pull_refresh.js?v=5.8.0"></script>
+  <script src="/static/js/dossier.js?v=5.8.0"></script>
+  <script src="/static/js/views.js?v=5.8.0"></script>
+  <script src="/static/js/modals.js?v=5.8.0"></script>
+  <script src="/static/js/app.js?v=5.8.0"></script>
 </body>
 </html>
