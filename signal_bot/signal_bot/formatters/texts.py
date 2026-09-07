@@ -29,7 +29,7 @@ def progress_bar(pts):
     return f"[{bar}] {progress}/{needed}"
 
 
-def leaderboard_text(period="week"):
+def leaderboard_text(period="week", user_id=None):
     if period == "week":
         since = (datetime.now() - timedelta(days=7)).isoformat()
         title = "🏆  لیدربورد هفتگی"
@@ -55,7 +55,55 @@ def leaderboard_text(period="week"):
                 f"📡 {cnt} سیگنال  •  ✅ {winrate}%  •  🎖 {alpha_score.get_label(uid)}\n\n"
             )
     lines.append(SEP)
+
+    # فاز ۲ (بازبینی UX): اگه کاربر تو همون تاپ ۱۰ که بالا نشون داده شد
+    # نیست، به‌جای بی‌خبر گذاشتنش، چند نفر بالا/پایین رتبه‌ی خودش رو
+    # جدا نشون بده — این‌طوری همیشه یه بازخورد ملموس از «کجای صف»
+    # ایستاده می‌گیره، نه فقط سکوت یا یه عدد رتبه‌ی مطلق بی‌کانتکست.
+    if user_id is not None:
+        top_ids = {r[0] for r in rows}
+        if user_id not in top_ids:
+            full = signals_repo.get_leaderboard_ranked_full(since)
+            idx_by_uid = {r[0]: i for i, r in enumerate(full)}
+            if user_id in idx_by_uid:
+                center = idx_by_uid[user_id]
+                window = full[max(0, center-2): center+3]
+                lines.append("\n📍  <b>موقعیت تو</b>\n\n")
+                for uid, name, uname, level, pts, cnt, wins, rnk in window:
+                    display = esc(name or (f"@{uname}" if uname else "کاربر"))
+                    marker  = "👉 " if uid == user_id else "     "
+                    tag     = "  <b>(خودت)</b>" if uid == user_id else ""
+                    lines.append(f"{marker}#{rnk}  <b>{display}</b>{tag}  —  ⭐️ {pts or 0}\n")
+                lines.append(f"\n{SEP}")
+            else:
+                lines.append("\n📭  این دوره هنوز تو لیدربورد نیستی — یه سیگنال ثبت کن تا واردش بشی!\n")
     return "".join(lines)
+
+
+def profile_headline_text(user_id):
+    """
+    فاز ۲ (بازبینی UX — کارت‌محورسازی پروفایل): قبلاً user_stats_text در یک
+    پیام ۱۴ عدد پشت‌سرهم نشون می‌داد بدون سلسله‌مراتب بصری. الان اول فقط
+    ۴ تای کلیدی (درجه، سطح، امتیاز کل، رتبه) + progress bar میاد؛ بقیه
+    (استریک، برد/باخت، تفکیک ۱۰x/۵x/۲x، Alpha Score) پشت دکمه‌ی «جزئیات
+    بیشتر» (menu_profile_details → همون user_stats_text قبلی، کامل).
+    """
+    user = users_repo.get_profile_fields(user_id)
+    if not user:
+        return "کاربری پیدا نشد."
+    name, total_pts, streak, max_streak, level = user
+    rank = users_repo.get_rank(user_id) or "؟"
+    role_label = access.get_role_label(users_repo.get_role(user_id))
+
+    return (
+        f"<b>👤  پروفایل {esc(name) or 'شما'}</b>\n{SEP}\n\n"
+        f"🎖  درجه: {role_label}\n"
+        f"📶  سطح: {level}\n"
+        f"📊  پیشرفت: {progress_bar(total_pts)}\n\n"
+        f"{SEP}\n"
+        f"⭐️  امتیاز کل: <b>{total_pts}</b>   🏅  رتبه کلی: <b>#{rank}</b>\n"
+        f"{SEP}"
+    )
 
 
 def user_stats_text(user_id):
@@ -76,7 +124,7 @@ def user_stats_text(user_id):
 
     return (
         f"<b>👤  پروفایل {esc(name) or 'شما'}</b>\n{SEP}\n\n"
-        f"رول: {role_label}\n"
+        f"🎖  درجه: {role_label}\n"
         f"{level}\n"
         f"🎖  Alpha Score: <b>{alpha_label}</b>\n"
         f"📊  پیشرفت: {progress_bar(total_pts)}\n\n"

@@ -55,15 +55,21 @@ def create_session(telegram_id: int, username: str = None, first_name: str = Non
     """Session جدید می‌سازه (یا نشست فعلی همون کاربر رو تمدید/جایگزین می‌کنه) و توکن برمی‌گردونه.
     ⚠️ عمداً هر بار یه نشست *جدید* insert می‌شه، نشست‌های قبلی همون کاربر رو
     پاک نمی‌کنه — یعنی چندتا دستگاه/تب هم‌زمان می‌تونن لاگین بمونن. اگه
-    می‌خوای فقط یه نشست فعال به ازای کاربر مجاز باشه، بگو تا عوضش کنم."""
+    می‌خوای فقط یه نشست فعال به ازای کاربر مجاز باشه، بگو تا عوضش کنم.
+
+    role رو مستقیم رو session جدید هم می‌ذاره اگه قبلاً تو user_profiles
+    (رکورد دائمیِ همون telegram_id) claim شده باشه — یعنی بعد از انقضای
+    session یا لاگین از یه دستگاه/مرورگر دیگه، دیگه نیازی به وارد کردن
+    دوباره‌ی پین نیست."""
     token = secrets.token_hex(32)
     now = datetime.utcnow()
     expires = now + timedelta(days=SESSION_TTL_DAYS)
+    existing_role = get_profile(telegram_id).get("role")
     conn = get_db()
     conn.execute(
         "INSERT INTO sessions (token, telegram_id, username, first_name, photo_url, role, created_at, expires_at) "
-        "VALUES (?, ?, ?, ?, ?, NULL, ?, ?)",
-        (token, telegram_id, username, first_name, photo_url, now.isoformat(), expires.isoformat()),
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (token, telegram_id, username, first_name, photo_url, existing_role, now.isoformat(), expires.isoformat()),
     )
     conn.commit()
     conn.close()
@@ -164,7 +170,10 @@ def verify_pin(role: str, pin: str, actor_telegram_id=None) -> bool:
 
 def claim_role(token: str, role: str, pin: str) -> bool:
     """نقش رو رو یه session موجود قفل می‌کنه، اگه pin درست باشه. یک‌طرفه‌ست —
-    بعد از claim شدن، دفعات بعدی دیگه نیازی به pin نیست (session.role چک می‌شه)."""
+    بعد از claim شدن، دفعات بعدی دیگه نیازی به pin نیست (session.role چک می‌شه).
+    ⚠️ همزمان تو user_profiles (دائمی) هم می‌نویسه — تا session های بعدیِ
+    همین telegram_id (بعد از انقضا یا از دستگاه دیگه) خودکار همین نقش رو
+    داشته باشن، بدون نیاز به pin دوباره."""
     session = get_session(token)
     if not session:
         return False
@@ -174,4 +183,39 @@ def claim_role(token: str, role: str, pin: str) -> bool:
     conn.execute("UPDATE sessions SET role=? WHERE token=?", (role, token))
     conn.commit()
     conn.close()
+    _upsert_profile(session["telegram_id"], role=role)
     return True
+
+
+def get_profile(telegram_id: int) -> dict:
+    """{"display_name": str|None, "role": str|None} — همیشه دیکشنری برمی‌گردونه،
+    حتی اگه رکوردی نباشه (هردو None)."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT display_name, role FROM user_profiles WHERE telegram_id=?", (telegram_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return {"display_name": None, "role": None}
+    return {"display_name": row[0], "role": row[1]}
+
+
+def _upsert_profile(telegram_id: int, display_name=None, role=None):
+    """فقط فیلدهای داده‌شده رو عوض می‌کنه؛ None یعنی «دست نزن»، نه «پاک کن»."""
+    current = get_profile(telegram_id)
+    new_name = current["display_name"] if display_name is None else display_name
+    new_role = current["role"] if role is None else role
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO user_profiles (telegram_id, display_name, role, updated_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(telegram_id) DO UPDATE SET display_name=excluded.display_name, role=excluded.role, updated_at=excluded.updated_at",
+        (telegram_id, new_name, new_role, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_display_name(telegram_id: int, display_name: str):
+    name = (display_name or "").strip()[:64]  # ⚠️ سقف طول، مثل بقیه‌ی ورودی‌های آزاد پروژه
+    _upsert_profile(telegram_id, display_name=name or None)
+    return name or None

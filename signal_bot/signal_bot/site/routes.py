@@ -89,7 +89,21 @@ async def handle_session(request: web.Request) -> web.Response:
     session = auth.get_session(_get_session_from_request(request))
     if not session:
         return _json_error(401, "invalid or expired session")
+    session = dict(session)
+    session["display_name"] = auth.get_profile(session["telegram_id"])["display_name"]
     return web.json_response(session)
+
+
+async def handle_profile_update(request: web.Request) -> web.Response:
+    session = auth.get_session(_get_session_from_request(request))
+    if not session:
+        return _json_error(401, "invalid or expired session")
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+    saved = auth.set_display_name(session["telegram_id"], body.get("display_name", ""))
+    return web.json_response({"display_name": saved})
 
 
 async def handle_claim_role(request: web.Request) -> web.Response:
@@ -137,12 +151,96 @@ def _require_owner_or_admin(request: web.Request, signal_id: int):
     return None
 
 
-async def handle_signals_get(request: web.Request) -> web.Response:
-    # ⚠️ session اختیاریه — کاربر ناشناس هم فید رو می‌بینه، فقط فیلدهای VIP
-    # براش mask می‌شه (SEC-02). به همین خاطر _require_session نه، مستقیم
-    # get_session با توکنِ احتمالاً None.
+async def handle_detect_chain(request: web.Request) -> web.Response:
+    if not _require_admin(request):
+        return _json_error(403, "admin only")
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+    address = (body.get("contract_address") or "").strip()
+    if not address:
+        return _json_error(400, "contract_address لازمه")
+    from signal_bot.services.price_feed import detect_chain_and_price
+    chain, price = await detect_chain_and_price(address)
+    return web.json_response({"chain": chain, "price": price})
+
+
+async def handle_home(request: web.Request) -> web.Response:
+    """فاز ۵: لندینگ‌پیج — آمار کلان + بهترین کال‌های اخیر (با masking VIP،
+    چون این صفحه عمومیه)."""
     viewer = auth.get_session(_get_session_from_request(request))
-    return web.json_response(signals.get_feed(viewer=viewer))
+    return web.json_response({
+        "stats": signals.get_stats(),
+        "top_recent_wins": signals.get_top_recent_wins(days=7, limit=5, viewer=viewer),
+    })
+
+
+async def handle_set_caller_tier(request: web.Request) -> web.Response:
+    """ادمین می‌تونه هر کالری رو (با telegram_id یا فقط اسم) به یکی از
+    ۴ تیر (bronze/silver/gold/diamond) بذاره، یا با tier=null/'' برداره —
+    دستیه، نه محاسبه‌ی خودکار از رتبه."""
+    session = _require_admin(request)
+    if not session:
+        return _json_error(403, "admin only")
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+    ctid = body.get("caller_telegram_id")
+    cname = (body.get("caller_name") or "").strip() or None
+    if not ctid and not cname:
+        return _json_error(400, "caller_telegram_id یا caller_name لازمه")
+    try:
+        ratings.set_caller_tier(ctid, cname, body.get("tier") or None, set_by=session["telegram_id"])
+    except ValueError as e:
+        return _json_error(400, str(e))
+    return web.json_response({"ok": True})
+
+
+async def handle_leaderboard(request: web.Request) -> web.Response:
+    """فاز ۳: لیدربورد دوبخشی — کالرها (بر اساس رأی کاربرها، site.db) +
+    سیگنال‌دهندگان (بر اساس امتیاز، signals.db خودِ بات). ⚠️ اولین باریه که
+    site/routes.py مستقیم از دیتابیس بات می‌خونه — چون بات و سایت هم‌پروسه‌ان
+    (site_sync هم قبلاً همین‌جوری مستقیم پایتونی بود)، مشکلی نداره، فقط برای
+    اولین‌بار صریح import شده."""
+    from datetime import datetime, timedelta
+    from signal_bot.db import signals_repo
+
+    period = request.query.get("period", "week")
+    if period == "week":
+        since = (datetime.now() - timedelta(days=7)).isoformat()
+    elif period == "month":
+        since = (datetime.now() - timedelta(days=30)).isoformat()
+    else:
+        since = "2000-01-01"
+
+    signal_giver_rows = signals_repo.get_leaderboard_rows(since, limit=10)
+    signal_givers = [
+        {"user_id": r[0], "full_name": r[1], "username": r[2], "level": r[3],
+         "points": r[4], "count": r[5], "wins": r[6]}
+        for r in signal_giver_rows
+    ]
+    return web.json_response({"callers": ratings.get_top_callers(limit=10), "signal_givers": signal_givers})
+
+
+async def handle_signals_get(request: web.Request) -> web.Response:
+    # ⚠️ فاز ۸: برخلاف قبل، الان دیدن سیگنال‌ها (حتی تیر رایگان) نیاز به لاگین
+    # داره — طبق تصمیم صریح: «همه‌ی بخش‌ها در دسترس باشه به‌جز سیگنال‌ها».
+    # این جدا از ماسک VIP (SEC-02) هست: اونجا لاگین‌شده‌ی غیرمشترک VIP رو
+    # نمی‌بینه؛ اینجا اصلاً بدون لاگین هیچی (حتی رایگان) نمی‌بینه.
+    viewer = auth.get_session(_get_session_from_request(request))
+    if not viewer:
+        return _json_error(401, "برای دیدن سیگنال‌ها باید با تلگرام وارد بشی")
+    try:
+        limit = min(int(request.query.get("limit", 200)), 200)  # سقف ۲۰۰ — جلوی offset/limit غیرمنطقی
+        offset = max(int(request.query.get("offset", 0)), 0)
+    except ValueError:
+        return _json_error(400, "limit/offset باید عدد باشن")
+    status = request.query.get("status") or None
+    channel = request.query.get("channel") or None
+    q = request.query.get("q") or None
+    return web.json_response(signals.get_feed(limit=limit, offset=offset, status=status, channel=channel, q=q, viewer=viewer))
 
 
 async def handle_signals_create(request: web.Request) -> web.Response:
@@ -156,6 +254,7 @@ async def handle_signals_create(request: web.Request) -> web.Response:
         sid = signals.create_signal(**{k: v for k, v in body.items() if k in (
             "owner_telegram_id", "caller_name", "channel", "coin", "direction", "tier", "note",
             "hashtag", "before_img", "buy_link", "contract_address", "dex_type", "created_at",
+            "chain", "entry_price",
         )})
     except TypeError as e:
         return _json_error(400, str(e))
@@ -357,16 +456,21 @@ def register(app: web.Application):
     app.router.add_get("/", handle_index)
     app.router.add_post("/site/login-widget", handle_login_widget)
     app.router.add_get("/site/session", handle_session)
+    app.router.add_post("/site/profile", handle_profile_update)
     app.router.add_post("/site/claim-role", handle_claim_role)
     app.router.add_post("/site/verify-pin", handle_verify_pin)
     app.router.add_get("/site/signals", handle_signals_get)
     app.router.add_post("/site/signals", handle_signals_create)
+    app.router.add_post("/site/detect-chain", handle_detect_chain)
     app.router.add_patch("/site/signals/{id}", handle_signals_edit)
     app.router.add_post("/site/signals/{id}/result", handle_signals_result)
     app.router.add_post("/site/signals/{id}/toggle-entry", handle_signals_toggle_entry)
     app.router.add_post("/site/signals/{id}/images", handle_signal_image_upload)
     app.router.add_delete("/site/signals/{id}", handle_signals_delete)
     app.router.add_get("/site/ratings", handle_ratings_get)
+    app.router.add_get("/site/leaderboard", handle_leaderboard)
+    app.router.add_post("/site/callers/tier", handle_set_caller_tier)
+    app.router.add_get("/site/home", handle_home)
     app.router.add_get("/site/ratings/all", handle_ratings_all)
     app.router.add_get("/site/ratings/summary", handle_ratings_summary)
     app.router.add_post("/site/ratings", handle_ratings_submit)

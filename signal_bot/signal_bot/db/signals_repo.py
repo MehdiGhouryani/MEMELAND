@@ -159,6 +159,17 @@ def get_result_counts(user_id, status="approved"):
     return result
 
 
+def has_any_signal(user_id) -> bool:
+    """فاز ۲: آیا این کاربر تا حالا حتی یه سیگنال ثبت کرده (هر status)؟ برای
+    تصمیم نشون‌دادن دکمه‌ی «منوی سیگنال‌دهنده» تو منوی اصلی."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM signals WHERE user_id=? LIMIT 1", (user_id,))
+    found = c.fetchone() is not None
+    conn.close()
+    return found
+
+
 def count_user_signals(user_id, status):
     conn = get_db()
     c = conn.cursor()
@@ -192,6 +203,35 @@ def get_leaderboard_rows(since_iso, limit=10):
         WHERE s.status='approved' AND s.created_at >= ?
         GROUP BY s.user_id ORDER BY pts DESC LIMIT ?
     """, (since_iso, limit))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_leaderboard_ranked_full(since_iso):
+    """
+    فاز ۲ (بازبینی UX — لیدربورد نسبی): نسخه‌ی کامل (بدون LIMIT) لیدربورد
+    همون دوره + ستون رتبه (RANK window function روی همون امتیاز تجمیعی).
+    هدف: پیدا کردن جایگاه یه کاربر خاص داخل کل صف، نه فقط تاپ ۱۰ — تا
+    کاربری که تو تاپ ۱۰ نیست هم بتونه ببینه چند نفر بالا/پایینشن، به‌جای
+    اینکه اصلاً تو لیدربورد دیده نشه (طبق پرینسیپل UX گیمیفیکیشن: دیدن
+    فقط عدد رتبه‌ی مطلق بین صدها نفر بی‌انگیزه‌کننده‌ست؛ دیدن «همسایه‌های
+    رتبه»ی خودت مفیدتره).
+    خروجی هر ردیف دقیقاً هم‌شکل get_leaderboard_rows + یه ستون rnk اضافه.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT user_id, full_name, username, level, pts, cnt, wins, rnk FROM (
+            SELECT s.user_id, u.full_name, u.username, u.level, SUM(s.points) as pts,
+                   COUNT(s.id) as cnt,
+                   SUM(CASE WHEN s.result != 'loss' AND s.result != 'open' THEN 1 ELSE 0 END) as wins,
+                   RANK() OVER (ORDER BY SUM(s.points) DESC) as rnk
+            FROM signals s JOIN users u ON s.user_id = u.user_id
+            WHERE s.status='approved' AND s.created_at >= ?
+            GROUP BY s.user_id
+        ) ORDER BY rnk ASC
+    """, (since_iso,))
     rows = c.fetchall()
     conn.close()
     return rows

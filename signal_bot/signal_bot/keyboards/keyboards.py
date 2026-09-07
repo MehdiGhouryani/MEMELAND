@@ -12,10 +12,26 @@ def btn(text, cb, style=None):
     return InlineKeyboardButton(text, callback_data=cb)
 
 
-def main_menu_kb(is_admin=False, is_vip_helper=False):
+def main_menu_kb(is_admin=False, is_vip_helper=False, is_signal_giver=False):
+    """⚠️ فاز ۲: استخر جایزه/سیگنال‌هام/ثبت‌نتیجه از این منو به caller_menu_kb
+    منتقل شدن — طبق گفته‌ی شریک، اینا فقط برای کسی معنی دارن که سیگنال
+    می‌ده، و منوی اصلی باید رو «استفاده از سیگنال‌های موجود» تمرکز کنه، نه
+    «تو هم می‌تونی سیگنال بدی». callback_data هرکدوم دست‌نخورده مونده، پس
+    هندلرهای موجودشون بدون تغییر کار می‌کنن.
+    is_signal_giver: هر کاربری که حداقل یه سیگنال ثبت کرده (یا ادمینه) —
+    فقط اونا دکمه‌ی «منوی سیگنال‌دهنده» رو می‌بینن."""
+    # فاز ۰ (بازبینی UX): «ثبت سیگنال» از اولین/برجسته‌ترین دکمه به ردیف
+    # پایین‌تر منتقل شد — چون این دکمه برای همه (حتی کسی که فقط مصرف‌کننده‌ی
+    # سیگنالِ دیگرانه) نمایش داده می‌شه، و اولین برخورد کاربر با منو باید
+    # «مصرف سیگنال‌های موجود» باشه نه «تو هم سیگنال بده» (طبق همون فلسفه‌ای
+    # که فاز ۲ برای جدا کردن caller_menu_kb ازش استفاده کرد).
+    # فاز ۱ (بازبینی UX): «لیدربورد» به یه هاب مشترک تبدیل شد که تابلوی
+    # افتخار/پاداش‌های من/استخر جایزه رو هم به‌صورت تب زیر خودش داره
+    # (رجوع کن به ranking_hub_kb) — پس دیگه لازم نیست این‌ها ردیف‌های
+    # جدا و غیرمجاور تو منوی اصلی باشن.
     kb = [
-        [btn("📡  ثبت سیگنال", "menu_signal", "success"),
-         btn("🏆  لیدربورد",   "menu_leader", "primary")],
+        [btn("📶  سیگنال‌های فعال","menu_activesignals","success"),
+         btn("🏆  رتبه‌بندی و جوایز",   "menu_leader", "primary")],
     ]
     # دکمه‌ی WebApp فقط تو چت خصوصی کار می‌کنه (محدودیت خودِ تلگرام) — مشکلی
     # نیست چون main_menu_kb از قبل فقط تو DM صدا زده می‌شه (رجوع کن به
@@ -26,21 +42,29 @@ def main_menu_kb(is_admin=False, is_vip_helper=False):
     if SITE_URL:
         kb.append([InlineKeyboardButton("🌐  ورود به Memeland Hub", web_app=WebAppInfo(url=SITE_URL))])
     kb += [
-        [btn("📶  سیگنال‌های فعال","menu_activesignals","success"),
-         btn("📊  آمار من",    "menu_stats",  "primary")],
-        [btn("💎  استخر جایزه","menu_prize",  "primary"),
-         btn("💸  واریز جایزه","menu_donate", "success")],
-        [btn("👤  پروفایل",    "menu_profile","primary"),
-         btn("📜  سیگنال‌هام", "menu_mysignals", "primary")],
-        [btn("🎯  ثبت نتیجه سیگنالم","menu_myresults","success"),
-         btn("🎁  پاداش‌های من","menu_myrewards","primary")],
-        [btn("🎖️  تابلوی افتخار","menu_halloffame","primary")],
+        [btn("📊  آمار من",    "menu_stats",  "primary"),
+         btn("👤  پروفایل",    "menu_profile","primary")],
+        [btn("📡  ثبت سیگنال", "menu_signal", "success"),
+         btn("🤝  حمایت از ما","menu_donate", "success")],
     ]
+    if is_signal_giver or is_admin:
+        kb.append([btn("🎙️  منوی سیگنال‌دهنده", "menu_caller_hub", "primary")])
     if is_admin:
         kb.append([btn("⚙️  پنل ادمین", "menu_admin", "danger")])
     elif is_vip_helper:
         kb.append([btn("📋  بررسی سیگنال‌ها (VIP Helper)", "adm_pending", "primary")])
     return InlineKeyboardMarkup(kb)
+
+
+def caller_menu_kb():
+    """فاز ۲: منوی مخصوص کسی که سیگنال می‌ده — استخر جایزه/سیگنال‌هام/
+    ثبت‌نتیجه که قبلاً تو منوی اصلی بودن، الان اینجان."""
+    return InlineKeyboardMarkup([
+        [btn("📜  سیگنال‌هام", "menu_mysignals", "primary"),
+         btn("🎯  ثبت نتیجه سیگنالم","menu_myresults","success")],
+        [btn("💎  استخر جایزه","menu_prize",  "primary")],
+        [btn("🔙  بازگشت", "back_main", "secondary")],
+    ])
 
 
 def back_main_kb():
@@ -91,6 +115,7 @@ def admin_kb():
          btn("📤 خروجی اکسل",         "adm_export",  "primary")],
         [btn("🆕 شروع فصل جدید",      "adm_newseason","primary"),
          btn("❓ راهنما",              "adm_help",    "primary")],
+        [btn("💜 ولت سولانا",         "adm_solana_wallet","primary")],
         [btn("🔙 برگشت","back_main","primary")],
     ])
 
@@ -140,14 +165,19 @@ def my_results_list_kb(rows):
 
 
 def donate_amount_kb():
-    return InlineKeyboardMarkup([
+    from signal_bot.site.kv import kv_get
+    solana_wallet = kv_get("settings:solana_donate_wallet")
+    kb = [
         [btn("5$","donate_5","primary"),   btn("10$","donate_10","primary"),
          btn("20$","donate_20","primary")],
         [btn("50$","donate_50","success"), btn("100$","donate_100","success"),
          btn("200$","donate_200","success")],
         [btn("✏️  مبلغ دلخواه","donate_custom","primary")],
-        [btn("🔙  برگشت","back_main","primary")],
-    ])
+    ]
+    if solana_wallet:
+        kb.append([btn("💜  واریز مستقیم با ولت سولانا","donate_solana_wallet","primary")])
+    kb.append([btn("🔙  برگشت","back_main","primary")])
+    return InlineKeyboardMarkup(kb)
 
 
 def payment_link_kb(invoice_url: str, donate_id: int):
@@ -175,13 +205,46 @@ def caller_support_payment_link_kb(invoice_url: str, donate_id: int):
     ])
 
 
-def leader_kb(active="week"):
+def profile_headline_kb():
+    """فاز ۲: کیبورد نسخه‌ی خلاصه‌ی پروفایل — یه دکمه برای رفتن به جزئیات کامل."""
     return InlineKeyboardMarkup([
-        [btn(f"📅 هفتگی{'✓' if active=='week' else ''}",  "leader_week",  "success" if active=="week"  else "primary"),
-         btn(f"🗓 ماهانه{'✓' if active=='month' else ''}", "leader_month", "success" if active=="month" else "primary"),
-         btn(f"🌟 همه وقت{'✓' if active=='all' else ''}",  "leader_all",   "success" if active=="all"   else "primary")],
-        [btn("🔙  برگشت","back_main","primary")],
+        [btn("🔍  جزئیات بیشتر", "menu_profile_details", "primary")],
+        [btn("🔙  برگشت به منو","back_main","primary")],
     ])
+
+
+def ranking_hub_kb(active_tab="leader", period="week"):
+    """
+    فاز ۱ (بازبینی UX): قبلاً «لیدربورد»، «تابلوی افتخار» و «پاداش‌های من»
+    سه دکمه‌ی جدا و غیرمجاور تو منوی اصلی بودن با هم‌پوشانی مفهومی زیاد.
+    الان زیر یه هاب مشترک با تب جمع شدن. «استخر جایزه» هم به‌عنوان تب
+    چهارم اضافه شد تا تناقض قبلی رفع بشه: قبلاً برنده‌های استخر جایزه
+    (تابلوی افتخار) برای همه دیده می‌شد ولی وضعیت فعلیِ خودِ استخر فقط
+    برای کسی که سیگنال داده — یعنی کاربر عادی که تو «حمایت از ما» پول
+    واریز می‌کنه (که مستقیم همین استخره)، هیچ‌راهی برای دیدن وضعیتش نداشت.
+
+    callback_data هرکدوم دست‌نخورده مونده (menu_leader/menu_halloffame/
+    menu_myrewards/menu_prize) — پس هندلرهای موجودشون بدون تغییر routing
+    کار می‌کنن؛ فقط کیبورد خروجی‌شون یکی شده.
+    """
+    tabs = [
+        [btn(f"🏆 لیدربورد{' ✓' if active_tab=='leader' else ''}", "menu_leader",
+             "success" if active_tab=="leader" else "primary"),
+         btn(f"🎖 افتخار{' ✓' if active_tab=='halloffame' else ''}", "menu_halloffame",
+             "success" if active_tab=="halloffame" else "primary")],
+        [btn(f"🎁 پاداش من{' ✓' if active_tab=='myrewards' else ''}", "menu_myrewards",
+             "success" if active_tab=="myrewards" else "primary"),
+         btn(f"💎 استخر جایزه{' ✓' if active_tab=='prize' else ''}", "menu_prize",
+             "success" if active_tab=="prize" else "primary")],
+    ]
+    if active_tab == "leader":
+        tabs.append(
+            [btn(f"📅 هفتگی{'✓' if period=='week' else ''}",  "leader_week",  "success" if period=="week"  else "primary"),
+             btn(f"🗓 ماهانه{'✓' if period=='month' else ''}", "leader_month", "success" if period=="month" else "primary"),
+             btn(f"🌟 همه وقت{'✓' if period=='all' else ''}",  "leader_all",   "success" if period=="all"   else "primary")]
+        )
+    tabs.append([btn("🔙  برگشت به منو","back_main","primary")])
+    return InlineKeyboardMarkup(tabs)
 
 
 def mysignals_filter_kb():
@@ -202,7 +265,7 @@ def user_manage_kb(target_id, is_blocked_now, is_vip_helper_now=False):
     return InlineKeyboardMarkup([
         [btn(block_text, block_cb, block_style),
          btn("⭐ تنظیم امتیاز", f"setpts_{target_id}", "primary")],
-        [btn("🎖 تغییر رول", f"setrole_{target_id}", "primary")],
+        [btn("🎖 تغییر درجه", f"setrole_{target_id}", "primary")],
         [btn("🎁 اعطای پاداش", f"grantreward_{target_id}", "success")],
         [btn(vip_text, vip_cb, "primary")],
         [btn("🔙 برگشت","adm_users","primary")],

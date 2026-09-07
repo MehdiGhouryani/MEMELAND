@@ -15,7 +15,7 @@ from telegram.constants import ParseMode
 from signal_bot.config.settings import SEP, ADMIN_IDS, NOWPAYMENTS_IPN_SECRET, IPN_CALLBACK_URL
 from signal_bot.db import prize_repo
 from signal_bot.formatters.texts import prize_pool_text
-from signal_bot.keyboards.keyboards import donate_amount_kb, back_main_kb, payment_link_kb
+from signal_bot.keyboards.keyboards import donate_amount_kb, back_main_kb, payment_link_kb, ranking_hub_kb
 from signal_bot.services import payments as payments_service
 from signal_bot.services.notify import safe_send_message
 from signal_bot.handlers.common import guard_callback
@@ -39,16 +39,29 @@ async def payments_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
 
     if data == "menu_prize":
-        await q.edit_message_text(prize_pool_text(), reply_markup=back_main_kb(), parse_mode=ParseMode.HTML)
+        await q.edit_message_text(prize_pool_text(), reply_markup=ranking_hub_kb("prize"), parse_mode=ParseMode.HTML)
 
     elif data == "menu_donate":
         await q.edit_message_text(
-            f"<b>💸  واریز به استخر جایزه</b>\n{SEP}\n\n"
-            "💳  پرداخت با <b>NOWPayments</b>\n"
-            "✅  بیش از ۳۰۰ ارز دیجیتال\n"
-            "⚡️  تأیید خودکار\n\n"
+            f"<b>🤝  حمایت از ما</b>\n{SEP}\n\n"
+            "این صندوق برای حمایت از برترین سیگنال‌دهنده‌هامون و آلفاکالرهاست.\n"
+            "تمام مبالغ جمع‌آوری‌شده به لیدربورد برترین کالرهای این ماه اختصاص پیدا می‌کنه.\n"
+            "<i>دونیت کاملاً اختیاریه 🙏</i>\n\n"
+            "💳  پرداخت با <b>NOWPayments</b> — بیش از ۳۰۰ ارز دیجیتال، تأیید خودکار\n\n"
             f"{SEP}\nمبلغ رو انتخاب کن 👇",
             reply_markup=donate_amount_kb(), parse_mode=ParseMode.HTML
+        )
+
+    elif data == "donate_solana_wallet":
+        from signal_bot.site.kv import kv_get
+        solana_wallet = kv_get("settings:solana_donate_wallet") or "—"
+        await q.edit_message_text(
+            f"<b>💜  واریز مستقیم با ولت سولانا</b>\n{SEP}\n\n"
+            "هر مبلغی (SOL یا هر توکن دیگه) به این آدرس بفرست:\n\n"
+            f"<code>{solana_wallet}</code>\n\n"
+            "برای کپی، رو آدرس بزن. ⚠️ این مسیر خودکار نیست — تأییدش دستیه و "
+            "تو لیدربورد ماهانه به‌صورت دستی لحاظ می‌شه، نه آنی.",
+            reply_markup=back_main_kb(), parse_mode=ParseMode.HTML
         )
 
     elif data.startswith("donate_"):

@@ -13,9 +13,9 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from signal_bot.config.settings import SEP
-from signal_bot.db import users_repo
+from signal_bot.db import users_repo, signals_repo
 from signal_bot.services import scoring, access
-from signal_bot.keyboards.keyboards import main_menu_kb, back_main_kb
+from signal_bot.keyboards.keyboards import main_menu_kb, caller_menu_kb, back_main_kb
 from signal_bot.utils import esc
 
 
@@ -44,14 +44,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_admin      = access.is_admin(user.id)
     is_vip_helper = access.is_vip_helper(user.id)
+    is_signal_giver = signals_repo.has_any_signal(user.id)
     pts   = users_repo.get_total_pts(user.id)
     level = scoring.get_level(pts)
     role_label = access.get_role_label(users_repo.get_role(user.id))
     await update.message.reply_html(
         f"سلام <b>{esc(user.first_name)}</b>! 👋\n\n"
         f"به <b>Signal Master</b> خوش اومدی 🎯\n"
-        f"رول: {role_label}\n"
-        f"سطح فعلی: {level}\n\n"
+        f"🎖  درجه: {role_label}\n"
+        f"📶  سطح فعلی: {level}\n\n"
         f"{SEP}\n"
         f"📡  سیگنال ثبت کن — امتیاز بگیر\n"
         f"🏆  در لیدربورد بالا برو\n"
@@ -59,7 +60,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔥  استریک بساز — بونوس بگیر\n"
         f"{SEP}\n\n"
         f"از منو زیر شروع کن 👇",
-        reply_markup=main_menu_kb(is_admin, is_vip_helper)
+        reply_markup=main_menu_kb(is_admin, is_vip_helper, is_signal_giver)
     )
 
 
@@ -86,12 +87,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📋  <b>قوانین</b>\n"
         f"•  سیگنال Rookie/Explorer قبل از انتشار باید Admin یا VIP Helper تأییدش کنه\n"
         f"•  سیگنال Guardian و بالاتر مستقیم منتشر می‌شه (بدون نیاز به تأیید)\n"
-        f"•  محدودیت ثبت روزانه بر اساس رولته (رول بالاتر = سقف بیشتر)\n"
+        f"•  محدودیت ثبت روزانه بر اساس درجه‌ته (درجه‌ی بالاتر = سقف بیشتر)\n"
         f"•  نتیجه‌ی برد/باخت رو خودت (از «🎯 ثبت نتیجه سیگنالم») یا ادمین ثبت می‌کنه\n"
         f"{SEP}\n"
-        f"🎖  <b>سقف سیگنال روزانه هر رول</b>\n"
+        f"🎖  <b>سقف سیگنال روزانه هر درجه</b>\n"
         f"{role_lines}\n"
-        f"رول‌ها فقط دستی و توسط ادمین ارتقا پیدا می‌کنن.\n"
+        f"درجه‌ها فقط دستی و توسط ادمین ارتقا پیدا می‌کنن.\n"
         f"{SEP}\n"
         f"👤  برای منوی کامل (پروفایل، لیدربورد، استخر جایزه و...) بهم پیام بده: /start"
     )
@@ -131,7 +132,7 @@ async def guard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def common_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر back_main و cancel — پترن: ^(back_main|cancel)$"""
+    """هندلر back_main، cancel، و menu_caller_hub — پترن: ^(back_main|cancel|menu_caller_hub)$"""
     guard = await guard_callback(update, context)
     if guard is None:
         return
@@ -139,9 +140,18 @@ async def common_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
 
     if data == "back_main":
+        is_signal_giver = signals_repo.has_any_signal(user.id)
         await q.edit_message_text(
             "🏠  <b>منوی اصلی</b>\n\nیه گزینه انتخاب کن 👇",
-            reply_markup=main_menu_kb(is_admin, is_vip_helper), parse_mode=ParseMode.HTML
+            reply_markup=main_menu_kb(is_admin, is_vip_helper, is_signal_giver), parse_mode=ParseMode.HTML
+        )
+    elif data == "menu_caller_hub":
+        # فاز ۲: قبلاً استخر جایزه/سیگنال‌هام/ثبت‌نتیجه مستقیم تو منوی اصلی
+        # بودن؛ حالا این‌جا جمع شدن — چون فقط برای کسی معنی دارن که سیگنال
+        # می‌ده. is_admin هم می‌تونه ببینتش (رجوع کن به main_menu_kb).
+        await q.edit_message_text(
+            "🎙️  <b>منوی سیگنال‌دهنده</b>\n\nیه گزینه انتخاب کن 👇",
+            reply_markup=caller_menu_kb(), parse_mode=ParseMode.HTML
         )
     elif data == "cancel":
         context.chat_data.clear()

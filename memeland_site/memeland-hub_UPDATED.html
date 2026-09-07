@@ -6,15 +6,41 @@
 <title>مرکز آلفا | MemeLand Persia × CryptoTrend</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root{
+  :root, [data-theme="dark"]{
     --bg:#080a10; --bg2:#0d1017;
     --glass: rgba(255,255,255,0.045); --glass-b: rgba(255,255,255,0.08);
+    --tint: rgba(255,255,255,0.09);
     --text:#e9edf4; --muted:#8a93a8;
     --teal:#2dd9c7; --teal-glow: rgba(45,217,199,0.35);
     --pink:#ff4d8d; --pink-glow: rgba(255,77,141,0.35);
     --gold:#ffc95c; --red:#ff5c6c; --indigo:#8b93ff; --indigo-glow: rgba(139,147,255,0.35);
   }
+  /* فاز ۳ (بازبینی UI): وقتی کاربر تلگرامش رو رو تم روشن گذاشته، دیگه
+     پس‌زمینه‌ی مشکی رو زور نمی‌کنیم — همون هیوهای برند (تیل/صورتی/طلایی)
+     می‌مونن، ولی برای کنتراست درست رو پس‌زمینه‌ی روشن عمیق‌تر شدن (نسخه‌ی
+     رنگ‌پریده‌ی --teal/--pink/--gold رو زمینه‌ی سفید عملاً غیرقابل‌خوندنه). */
+  [data-theme="light"]{
+    --bg:#f6f4f0; --bg2:#ffffff;
+    --glass: rgba(10,14,20,0.035); --glass-b: rgba(10,14,20,0.10);
+    --tint: rgba(10,14,20,0.08);
+    --text:#12141c; --muted:#5b6274;
+    --teal:#0e9e8f; --teal-glow: rgba(14,158,143,0.22);
+    --pink:#d63577; --pink-glow: rgba(214,53,119,0.18);
+    --gold:#a8730a; --red:#c72e3f; --indigo:#5b5fd6; --indigo-glow: rgba(91,95,214,0.18);
+  }
   *{box-sizing:border-box; margin:0; padding:0;}
+  /* فاز ۴-۲ (بازبینی UI/UX — دسترسی‌پذیری): قبلاً هیچ استایل focus تعریف
+     نشده بود — یعنی کسی که با کیبورد یا تلگرام دسکتاپ (که تب/فوکوس رو
+     ساپورت می‌کنه) پیمایش می‌کنه، هیچ نشونه‌ی بصری از این‌که کجای صفحه
+     فوکوسه نمی‌گرفت. outline رو فقط با :focus-visible نشون می‌دیم (نه
+     :focus خام) تا برای کلیک ماوس/لمس دورش نیاد، فقط برای پیمایش کیبوردی. */
+  button:focus-visible, [role="button"]:focus-visible, .nav-item:focus-visible,
+  .tab:focus-visible, .cat-tab:focus-visible, .filter-chip:focus-visible,
+  .lang-opt:focus-visible, .mini-btn:focus-visible, .ba-btn:focus-visible,
+  .admin-btn:focus-visible, input:focus-visible, select:focus-visible,
+  textarea:focus-visible, a:focus-visible{
+    outline: 2px solid var(--teal); outline-offset: 2px;
+  }
   body{
     background: radial-gradient(1200px 600px at 20% -10%, #131826 0%, var(--bg) 45%), var(--bg);
     color:var(--text); font-family:'Vazirmatn', sans-serif; min-height:100vh; padding-bottom:70px;
@@ -29,8 +55,8 @@
   .top-controls{display:flex; align-items:center; gap:6px;}
   .lang-toggle{display:flex; background:var(--glass); border:1px solid var(--glass-b); border-radius:20px; padding:3px; gap:2px;}
   .lang-opt{padding:5px 10px; font-size:10.5px; border-radius:16px; color:var(--muted); cursor:pointer; font-family:'JetBrains Mono';}
-  .lang-opt.on{background:rgba(255,255,255,.1); color:var(--text);}
-  .admin-btn{background:var(--glass); border:1px solid var(--glass-b); color:var(--muted); font-size:11px; padding:6px 12px; border-radius:20px; cursor:pointer; white-space:nowrap;}
+  .lang-opt.on{background:var(--tint); color:var(--text);}
+  .admin-btn{background:var(--glass); border:1px solid var(--glass-b); color:var(--muted); font-size:11px; padding:8px 14px; min-height:34px; display:inline-flex; align-items:center; border-radius:20px; cursor:pointer; white-space:nowrap;}
   .admin-btn.on{color:var(--gold); border-color:var(--gold);}
   .admin-btn.caller-on{color:var(--teal); border-color:var(--teal);}
   .brand-title{font-size:30px; font-weight:800; line-height:1.3; background:linear-gradient(90deg, var(--teal), var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent; margin-bottom:6px;}
@@ -38,7 +64,7 @@
 
   .nav{display:flex; gap:6px; max-width:600px; margin:24px auto 0; padding:0 16px; overflow-x:auto;}
   .nav-item{flex-shrink:0; padding:10px 16px; border-radius:20px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;}
-  .nav-item.on{color:var(--text); border-color:var(--text); background:rgba(255,255,255,0.08);}
+  .nav-item.on{color:var(--text); border-color:var(--text); background:var(--tint);}
 
   .section{max-width:560px; margin:0 auto; padding:20px 16px 0; display:none;}
   .section.show{display:block;}
@@ -59,7 +85,7 @@
   .hashtag{font-size:10px; color:var(--muted); font-family:'JetBrains Mono';}
 
   .filters{display:flex; gap:6px; margin-bottom:12px; overflow-x:auto;}
-  .filter-chip{padding:6px 13px; border-radius:20px; font-size:11.5px; border:1px solid var(--glass-b); color:var(--muted); background:var(--glass); white-space:nowrap; cursor:pointer;}
+  .filter-chip{padding:8px 14px; min-height:32px; display:inline-flex; align-items:center; border-radius:20px; font-size:11.5px; border:1px solid var(--glass-b); color:var(--muted); background:var(--glass); white-space:nowrap; cursor:pointer;}
   .filter-chip.on{color:var(--text); border-color:var(--text);}
   .sort-chip.on{color:var(--gold); border-color:var(--gold); background:rgba(255,201,92,.1);}
   .gallery-tagline{text-align:center; font-family:'Space Grotesk'; font-size:13px; color:var(--gold); letter-spacing:.5px; margin-bottom:16px; opacity:.85;}
@@ -69,6 +95,20 @@
   .empty-state{text-align:center; color:var(--muted); font-size:12.5px; padding:36px 20px; line-height:2;}
 
   .card{background:var(--glass); border:1px solid var(--glass-b); backdrop-filter: blur(14px); border-radius:16px; padding:14px 16px; position:relative;}
+  /* فاز ۳ (بازبینی UI): skeleton loading — طبق گایدلاین رسمی Telegram Mini
+     App، نبود حالت لودینگ باعث می‌شه کاربر فکر کنه اپ خرابه. این کارت‌ها
+     دقیقاً هم‌شکل «.card» واقعی‌ان (همون رادیوس/پدینگ)، فقط با یه shimmer
+     سبک به‌جای متن — و همیشه با innerHTML جایگزین می‌شن وقتی دیتای واقعی
+     برسه (renderSignals/renderHome/renderCallers و بقیه، از قبل هم همین
+     رفتار innerHTML-overwrite رو داشتن، هیچ‌جا تغییر نکرد).*/
+  .skel-card{background:var(--glass); border:1px solid var(--glass-b); border-radius:16px; padding:14px 16px; margin-bottom:8px; overflow:hidden; position:relative;}
+  .skel-line{height:11px; border-radius:6px; background:var(--glass-b); position:relative; overflow:hidden; margin-bottom:8px;}
+  .skel-line:last-child{margin-bottom:0; width:55%;}
+  .skel-line::after{content:''; position:absolute; inset:0; transform:translateX(-100%);
+    background:linear-gradient(90deg, transparent, var(--tint), transparent);
+    animation: skel-shimmer 1.4s infinite;}
+  @keyframes skel-shimmer{ 100%{ transform:translateX(100%); } }
+  @media (prefers-reduced-motion: reduce){ .skel-line::after{ animation:none; } }
   .card-row{display:flex; align-items:center; gap:12px;}
   .rank-badge{font-family:'JetBrains Mono'; font-size:10.5px; color:var(--muted); width:24px; text-align:center; flex-shrink:0;}
   .card-main{flex:1; min-width:0;}
@@ -85,10 +125,10 @@
   .win{color:var(--teal);} .loss{color:var(--red);} .open{color:var(--gold);}
   .result-date{font-size:9.5px; color:var(--muted); margin-top:2px;}
   .history-trail{display:flex; gap:5px; flex-wrap:wrap; margin-top:9px; padding-top:9px; border-top:1px dashed var(--glass-b);}
-  .history-chip{font-size:10px; font-family:'JetBrains Mono'; background:rgba(255,255,255,0.04); padding:3px 8px; border-radius:8px; color:var(--muted);}
+  .history-chip{font-size:10px; font-family:'JetBrains Mono'; background:var(--glass); padding:3px 8px; border-radius:8px; color:var(--muted);}
   .history-chip.latest{color:var(--teal); border:1px solid rgba(45,217,199,.3);}
   .admin-actions{display:flex; gap:6px; margin-top:10px;}
-  .mini-btn{font-size:10.5px; padding:5px 10px; border-radius:8px; border:1px solid var(--glass-b); background:transparent; color:var(--muted); cursor:pointer;}
+  .mini-btn{font-size:10.5px; padding:8px 12px; min-height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--glass-b); background:transparent; color:var(--muted); cursor:pointer;}
   .mini-btn.danger{color:var(--red); border-color:rgba(255,92,108,.3);}
   .mini-btn.accent{color:var(--gold); border-color:rgba(255,201,92,.35);}
 
@@ -112,7 +152,7 @@
   .lock-sub{font-size:10.5px; color:var(--muted); text-align:center; padding:0 20px;}
 
   .ba-toggle{display:flex; gap:6px; margin-top:10px;}
-  .ba-btn{font-size:10.5px; padding:5px 12px; border-radius:8px; border:1px solid var(--glass-b); background:transparent; color:var(--muted); cursor:pointer;}
+  .ba-btn{font-size:10.5px; padding:8px 14px; min-height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--glass-b); background:transparent; color:var(--muted); cursor:pointer;}
   .ba-btn.on{color:var(--text); border-color:var(--teal);}
   .ba-img-wrap{position:relative; width:100%; border-radius:12px; margin-top:8px; display:none; overflow:hidden; border:1px solid var(--glass-b);}
   .ba-img-wrap.show{display:block;}
@@ -135,7 +175,7 @@
   .modal h3{font-size:15px; margin-bottom:16px;}
   .field{margin-bottom:12px;}
   .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:5px;}
-  .field input, .field select, .field textarea{width:100%; background:rgba(255,255,255,.04); border:1px solid var(--glass-b); color:var(--text); padding:11px 12px; border-radius:10px; font-family:'Vazirmatn'; font-size:13px;}
+  .field input, .field select, .field textarea{width:100%; background:var(--glass); border:1px solid var(--glass-b); color:var(--text); padding:11px 12px; border-radius:10px; font-family:'Vazirmatn'; font-size:13px;}
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .modal-actions{display:flex; gap:10px; margin-top:16px;}
   .btn{flex:1; padding:12px; border-radius:12px; border:none; font-weight:700; font-size:12.5px; cursor:pointer;}
@@ -166,7 +206,8 @@
 </div>
 
 <div class="nav" id="mainNav">
-  <div class="nav-item on" data-s="signals" onclick="setSection('signals')"><span data-i18n="navSignals">🏆 نتایج</span></div>
+  <div class="nav-item on" data-s="home" onclick="setSection('home')"><span>🏠 خانه</span></div>
+  <div class="nav-item" data-s="signals" onclick="setSection('signals')"><span data-i18n="navSignals">✅ نتایج</span></div>
   <div class="nav-item" data-s="active" onclick="setSection('active')"><span data-i18n="navActive">🔴 فعال</span></div>
   <div class="nav-item" data-s="callers" onclick="setSection('callers')"><span data-i18n="navCallers">👤 کالرها</span></div>
   <div class="nav-item" data-s="strategies" onclick="setSection('strategies')"><span data-i18n="navStrategies">🧩 استراتژی</span></div>
@@ -174,8 +215,22 @@
   <div class="nav-item" id="navAdminItem" data-s="admin" onclick="setSection('admin')" style="display:none;"><span>⚙️ پنل ادمین</span></div>
 </div>
 
+<!-- HOME (لندینگ‌پیج) -->
+<div class="section show" id="sec-home">
+  <div class="hero-stats" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px;">
+    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatClosed" style="font-size:22px;">—</div><div class="card-meta">سیگنال بسته‌شده</div></div>
+    <div class="card" style="text-align:center;"><div class="result-val win" id="homeStatWinRate" style="font-size:22px;">—</div><div class="card-meta">Win Rate کلی</div></div>
+    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatGivers" style="font-size:22px;">—</div><div class="card-meta">سیگنال‌دهنده</div></div>
+  </div>
+  <div class="gallery-tagline">بهترین کال‌های ۷ روز اخیر</div>
+  <div class="list" id="homeTopWinsList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
+  <div id="homeCtaRow" style="display:flex; gap:8px; margin:14px 0;"></div>
+  <div class="gallery-tagline">آخرین مقالات</div>
+  <div class="list" id="homeArticlesList"></div>
+</div>
+
 <!-- RESULTS (exhibition gallery of closed calls) -->
-<div class="section show" id="sec-signals">
+<div class="section" id="sec-signals">
   <div class="gallery-tagline" data-i18n="tagline">گذشته در آینده تکرار می‌شود</div>
   <div class="field" style="margin-bottom:14px;">
     <input type="text" id="coinSearchInput" placeholder="🔍 جستجوی نماد (مثلاً BTC, $PEPE, فولاد...)" oninput="renderCoinSearch()">
@@ -200,7 +255,7 @@
       <div class="filter-chip sort-chip" data-sort="oldest" onclick="setSort('oldest')">📜 از روز اول</div>
       <div class="filter-chip sort-chip" data-sort="best" onclick="setSort('best')">📈 پرسودترین</div>
     </div>
-    <div class="list" id="signalsList"></div>
+    <div class="list" id="signalsList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
     <div class="leaderboard" id="leaderboardWrap" style="display:none;">
       <div class="lb-title">🏆 رتبه‌بندی کالرها — دکس</div>
       <div id="lbList"></div>
@@ -214,12 +269,21 @@
     <div style="font-size:12px; color:var(--muted);">همه‌ی سیگنال‌ها و کال‌های بازِ هر ۴ کتگوری — به محض بسته‌شدن، وارد بخش نتایج میشن.</div>
   </div>
   <div class="cat-tabs" id="activeCatTabs"></div>
-  <div class="list" id="activeList"></div>
+  <div class="list" id="activeList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
 </div>
 
 <!-- CALLERS / PROFILES -->
 <div class="section" id="sec-callers">
-  <div class="list" id="callersList"></div>
+  <div class="strat-subtabs">
+    <button class="tab active-alt" id="callersViewLbTab" onclick="setCallersView('leaderboard')">🏆 لیدربورد</button>
+    <button class="tab" id="callersViewListTab" onclick="setCallersView('list')">👤 لیست کامل</button>
+  </div>
+  <div class="strat-subtabs" id="leaderboardKindTabs" style="margin-top:8px;">
+    <button class="tab active-alt" id="lbKindCallersTab" onclick="setLeaderboardKind('callers')">برترین کالرها</button>
+    <button class="tab" id="lbKindGiversTab" onclick="setLeaderboardKind('signal_givers')">برترین سیگنال‌دهندگان</button>
+  </div>
+  <div class="list" id="leaderboardList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
+  <div class="list" id="callersList" style="display:none;"></div>
 </div>
 
 <!-- STRATEGIES -->
@@ -254,7 +318,7 @@
 
   <div class="lb-title">مدیریت و میانبرها</div>
   <div class="list" style="margin-bottom:18px;">
-    <div class="card" onclick="setSection('signals')" style="cursor:pointer;">🏆 مشاهده و ویرایش نتایج</div>
+    <div class="card" onclick="setSection('signals')" style="cursor:pointer;">✅ مشاهده و ویرایش نتایج</div>
     <div class="card" onclick="setSection('active')" style="cursor:pointer;">🔴 مدیریت سیگنال/کال‌های فعال</div>
     <div class="card" onclick="setSection('callers')" style="cursor:pointer;">👤 پروفایل و امتیاز کالرها</div>
   </div>
@@ -292,12 +356,66 @@ const SITE_API = '/site';
 // (۱) ready()/expand() و هماهنگی تم، (۲) استفاده تو confirmModal() پایین‌تر
 // برای جایگزینی confirm() با showConfirm() بومی تلگرام.
 const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+
+// فاز ۳ (بازبینی UI): پس‌زمینه‌ی مشکی قبلاً همیشه زور می‌شد، حتی اگه کاربر
+// تلگرامش رو تم روشن گذاشته باشه. الان `data-theme` رو <html> بر اساس
+// tg.colorScheme ست می‌شه (dark/light) و توکن‌های CSS متناظرش (بالای فایل،
+// [data-theme="light"]) خودکار اعمال می‌شن؛ هیوهای برند (تیل/صورتی/طلایی)
+// تو هر دو حالت حفظ می‌شن، فقط برای کنتراست عمیق‌تر/سبک‌تر می‌شن.
+const THEME_BG = { dark: '#080a10', light: '#f6f4f0' };
+function applyTelegramTheme(){
+  const scheme = (tg && tg.colorScheme === 'light') ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', scheme);
+  if(tg && tg.setBackgroundColor){ try{ tg.setBackgroundColor(THEME_BG[scheme]); }catch(e){} }
+}
+
+// فاز ۳: هلپر واحد برای لرزش لمسی بومی تلگرام — جای صدا زدن مستقیم
+// tg.HapticFeedback هرجا، یه‌بار اینجا تعریف و همه‌جا از همین استفاده
+// می‌شه؛ اگه خارج از تلگرام (مرورگر معمولی) باز شده باشه، بی‌صدا هیچ‌کاری
+// نمی‌کنه (چون tg همون اول null می‌مونه).
+// فاز ۴-۱ (بازبینی UI/UX دور دوم): جایگزین alert() خام مرورگر — تو یه
+// Telegram Mini App، alert() خام یه پاپ‌آپ پیش‌فرض مرورگره که با ظاهر اپ
+// هیچ هماهنگی نداره (برخلاف confirm() که قبلاً به tg.showConfirm بومی
+// تبدیل شده بود). notify() اگه تو تلگرام باز شده باشه از tg.showAlert
+// بومی استفاده می‌کنه؛ خارج از تلگرام (تست تو مرورگر معمولی) همون
+// alert() قدیمی fallback می‌مونه تا رفتار خارج از تلگرام نشکنه.
+function notify(message){
+  if(tg && tg.showAlert){ try{ tg.showAlert(message); return; }catch(e){} }
+  alert(message);
+}
+
+function haptic(kind){
+  if(!tg || !tg.HapticFeedback) return;
+  try{
+    if(kind==='success' || kind==='error' || kind==='warning'){
+      tg.HapticFeedback.notificationOccurred(kind);
+    } else if(kind==='select'){
+      tg.HapticFeedback.selectionChanged();
+    } else {
+      tg.HapticFeedback.impactOccurred(kind || 'light');
+    }
+  }catch(e){}
+}
+
+// فاز ۳: دکمه‌ی برگشتِ بومی تلگرام (بالای هدر خودِ تلگرام، نه یه دکمه‌ی
+// داخل صفحه) — فقط وقتی تو تب «خانه» نیستیم نشون داده می‌شه؛ زدنش دقیقاً
+// هم‌ارز تپ‌کردن روی «🏠 خانه»ست. setSection صداش می‌زنه (پایین‌تر).
+function syncBackButton(){
+  if(!tg || !tg.BackButton) return;
+  if(currentSection && currentSection !== 'home'){ tg.BackButton.show(); }
+  else { tg.BackButton.hide(); }
+}
+
 if(tg){
   tg.ready();
   tg.expand();
   if(tg.setHeaderColor) try{ tg.setHeaderColor('secondary_bg_color'); }catch(e){}
-  if(tg.setBackgroundColor) try{ tg.setBackgroundColor('#080a10'); }catch(e){}
+  applyTelegramTheme();
+  if(tg.onEvent) try{ tg.onEvent('themeChanged', applyTelegramTheme); }catch(e){}
+  if(tg.BackButton) try{ tg.BackButton.onClick(() => setSection('home')); }catch(e){}
   onTelegramWebAppAuth();  // fire-and-forget؛ خودش موفق بشه restoreSession() رو صدا می‌زنه
+} else {
+  document.documentElement.setAttribute('data-theme', 'dark');
 }
 // ================= پایان تشخیص محیط =================
 
@@ -337,12 +455,12 @@ async function onTelegramAuth(user){
     const resp = await fetch(SITE_API + '/login-widget', {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(user),
     });
-    if(!resp.ok){ console.error('telegram_login failed', resp.status); alert('ورود با تلگرام ناموفق بود.'); return; }
+    if(!resp.ok){ console.error('telegram_login failed', resp.status); notify('ورود با تلگرام ناموفق بود.'); return; }
     const { token } = await resp.json();
-    if(!token){ alert('ورود با تلگرام ناموفق بود.'); return; }
+    if(!token){ notify('ورود با تلگرام ناموفق بود.'); return; }
     localStorage.setItem('mh_session_token', token);
     await restoreSession();
-  }catch(e){ console.error(e); alert('خطا در ورود با تلگرام.'); }
+  }catch(e){ console.error(e); notify('خطا در ورود با تلگرام.'); }
 }
 
 // ================= هویت WebApp (initData) =================
@@ -380,11 +498,37 @@ async function restoreSession(){
     showLoggedOutUI();
     return;
   }
-  mySession = { token, telegram_id: row.telegram_id, username: row.username, first_name: row.first_name, role: row.role };
+  mySession = { token, telegram_id: row.telegram_id, username: row.username, first_name: row.first_name, role: row.role, display_name: row.display_name };
   showLoggedInUI();
+  // پروفایل واقعی: سرور (به‌ازای telegram_id) مرجعه، نه localStorage مرورگر.
+  // اگه سرور هنوز اسمی نداره ولی این مرورگر قبلاً یه اسم محلی داشت (کاربر
+  // قدیمی، قبل از این تغییر)، همون یه‌بار به سرور منتقل می‌شه تا گم نشه.
+  if(mySession.display_name){
+    myName = mySession.display_name;
+  } else if(myName){
+    setProfileName(myName);
+  }
   if(row.role === 'admin'){ isAdmin = true; if(typeof updateAdminBtnLabel === 'function') updateAdminBtnLabel(); }
   else if(row.role === 'caller'){ isCaller = true; if(typeof updateAdminBtnLabel === 'function') updateAdminBtnLabel(); }
   if(typeof renderAll === 'function') renderAll();
+}
+
+async function setProfileName(name){
+  // mySession باشه → سرور (دائمی، وصل به telegram_id). نباشه → localStorage
+  // (کاربر ناشناس/مسیر پین بدون تلگرام — هویتی نیست که بهش وصلش کنیم).
+  if(mySession){
+    try{
+      const resp = await fetch(SITE_API + '/profile', {
+        method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
+        body: JSON.stringify({ display_name: name }),
+      });
+      const data = await resp.json().catch(()=>({}));
+      myName = data.display_name || '';
+      mySession.display_name = myName;
+      return;
+    }catch(e){ console.error(e); }
+  }
+  try{ await window.storage.set('memeland:my-name', name, false); }catch(e){}
 }
 
 function showLoggedOutUI(){
@@ -506,7 +650,7 @@ let isUnlocked = false;
 let isSignalsSubscribed = false;
 let inGracePeriod = true;
 let lang = 'fa';
-let currentSection = 'signals';
+let currentSection = 'home';
 let currentChannel = 'alt';
 let currentActiveCat = 'all';
 
@@ -527,7 +671,7 @@ function buildCatTabs(containerId, activeVal, onClickFn, includeAll){
   if(!el) return;
   let html = '';
   if(includeAll){
-    html += `<button class="cat-tab" style="${activeVal==='all'?`border-color:var(--text); color:var(--text); background:rgba(255,255,255,.08);`:''}" onclick="${onClickFn}('all')">همه</button>`;
+    html += `<button class="cat-tab" style="${activeVal==='all'?`border-color:var(--text); color:var(--text); background:var(--tint);`:''}" onclick="${onClickFn}('all')">همه</button>`;
   }
   Object.entries(CATS).forEach(([key,c])=>{
     const on = activeVal===key;
@@ -544,14 +688,14 @@ const I18N = {
   fa: {
     roleBtn:'ادمین', profileBtn:'👤 پروفایل من', heroTitle:'مرکز آلفا',
     heroSub:'سیگنال، جم، تحلیل فاندامنتال و استراتژی — همه جا شفاف، همه جا قابل پیگیری.',
-    navSignals:'🏆 نتایج', navActive:'🔴 کال‌های فعال', navCallers:'👤 کالرها',
+    navSignals:'✅ نتایج', navActive:'🔴 کال‌های فعال', navCallers:'👤 کالرها',
     navStrategies:'🧩 استراتژی', navArticles:'📝 مقالات', tagline:'گذشته در آینده تکرار می‌شود',
     addBtn:'+ افزودن'
   },
   en: {
     roleBtn:'Admin', profileBtn:'👤 My Profile', heroTitle:'Alpha Hub',
     heroSub:'Signals, gems, fundamental calls and strategies — transparent and fully trackable.',
-    navSignals:'🏆 Results', navActive:'🔴 Active Calls', navCallers:'👤 Callers',
+    navSignals:'✅ Results', navActive:'🔴 Active Calls', navCallers:'👤 Callers',
     navStrategies:'🧩 Strategy', navArticles:'📝 Articles', tagline:'History repeats itself in the future',
     addBtn:'+ Add'
   }
@@ -619,18 +763,35 @@ function rowToSignalObj(row){
     buyLink: row.buy_link,
     contractAddress: row.contract_address,
     dexType: row.dex_type,
+    chain: row.chain,
+    entryPrice: row.entry_price,
     history: row.history || [],
     locked: !!row.locked  // SEC-02: سرور برای VIP بدون دسترسی، فیلدهای بالا رو null می‌فرسته + این پرچم رو true می‌کنه
   };
 }
 
+let signalsRequireLogin = false;
+
 async function loadSignals(){
   try{
-    const resp = await fetch(SITE_API + '/signals');
-    if(!resp.ok){ console.error('loadSignals status', resp.status); signals = []; return; }
+    // فاز A': سرور حالا {items, total} می‌ده (به‌جای آرایه‌ی خام) تا صفحه‌بندی
+    // واقعی ممکن بشه. فعلاً همون limit=200 قبلی رو صریح می‌خوایم — فیلتر/
+    // صفحه‌بندی UI هنوز به این وصل نشده (فاز بعدی)، این فقط سازگاری با
+    // فرمت جدیده، رفتار فعلی سایت عوض نمی‌شه.
+    const resp = await fetch(SITE_API + '/signals?limit=200', mySession ? {headers:{'Authorization':'Bearer '+mySession.token}} : {});
+    signalsRequireLogin = (resp.status === 401);
+    if(!resp.ok){ if(!signalsRequireLogin) console.error('loadSignals status', resp.status); signals = []; return; }
     const data = await resp.json();
-    signals = (data||[]).map(rowToSignalObj);
+    signals = ((data && data.items) || []).map(rowToSignalObj);
   }catch(e){ console.error('loadSignals exception', e); signals = []; }
+}
+
+function loginRequiredCardHtml(){
+  return `<div class="card" style="text-align:center; padding:24px 12px;">
+    <div style="font-size:28px; margin-bottom:8px;">🔒</div>
+    <div class="name" style="margin-bottom:6px;">برای دیدن سیگنال‌ها باید با تلگرام وارد بشی</div>
+    <div class="card-meta">بقیه‌ی بخش‌های سایت (لیدربورد، کالرها، مقالات) بدون لاگین هم در دسترسن.</div>
+  </div>`;
 }
 
 // جدول caller_ratings (فاز ۰-ب) رو به همون شکل قدیمی که renderCallers انتظار
@@ -665,6 +826,8 @@ async function loadAll(){
   articles = map.articles; strategies = map.strategies;
   await loadSignals();
   await loadCallerRatings();
+  await loadLeaderboard();
+  await loadHome();
 
   try{
     const u = await window.storage.get('memeland:unlocked', false);
@@ -688,8 +851,12 @@ async function loadAll(){
   }catch(e){ inGracePeriod = true; }
 
   try{
-    const mn = await window.storage.get('memeland:my-name', false);
-    myName = mn && mn.value ? mn.value : '';
+    if(mySession && mySession.display_name){
+      myName = mySession.display_name;
+    } else {
+      const mn = await window.storage.get('memeland:my-name', false);
+      myName = mn && mn.value ? mn.value : '';
+    }
   }catch(e){ myName = ''; }
 
   renderAll();
@@ -703,11 +870,13 @@ async function unlockSignals(){
   const code = await promptModal({title:'کد دسترسی', label:'کد اشتراک یا کد کامیونیتی رو وارد کن:'});
   if(code === null) return;
   if(await verifyPinRemote('subscriber', code) || await verifyPinRemote('community', code)){
+    haptic('success');
     isSignalsSubscribed = true;
     try{ await window.storage.set('memeland:signals-subscribed','true', false); }catch(e){}
     renderSignals();
   } else {
-    alert('کد نامعتبره.');
+    haptic('error');
+    notify('کد نامعتبره.');
   }
 }
 
@@ -817,9 +986,11 @@ function quickResultModal({result, status}){
 
 /* ---------- NAV ---------- */
 function setSection(s){
+  haptic('select');
   currentSection = s;
   document.querySelectorAll('.nav-item').forEach(el=> el.classList.toggle('on', el.dataset.s===s));
   document.querySelectorAll('.section').forEach(el=> el.classList.toggle('show', el.id === 'sec-'+s));
+  syncBackButton();
   renderAll();
 }
 
@@ -828,8 +999,8 @@ async function openMyProfile(){
   const n = await promptModal({title:'پروفایل من', label:'اسمی که تو نظرات و امتیازها نشون داده بشه:', value: myName});
   if(n===null) return;
   myName = n.trim();
-  try{ await window.storage.set('memeland:my-name', myName, false); }catch(e){}
-  alert(myName ? `اسمت ثبت شد: ${myName}` : 'اسم پاک شد.');
+  await setProfileName(myName);
+  notify(myName ? `اسمت ثبت شد: ${myName}` : 'اسم پاک شد.');
 }
 
 async function toggleAdmin(){
@@ -859,17 +1030,20 @@ async function toggleAdmin(){
   if(mySession){
     const adminOk = await claimRoleRemote(mySession.token, 'admin', pin);
     if(adminOk){
+      haptic('success');
       mySession.role = 'admin'; isAdmin = true;
       updateAdminBtnLabel();
       renderAll(); return;
     }
     const callerOk = await claimRoleRemote(mySession.token, 'caller', pin);
     if(callerOk){
+      haptic('success');
       mySession.role = 'caller'; isCaller = true;
       updateAdminBtnLabel();
       renderAll(); return;
     }
-    alert('کد اشتباهه.');
+    haptic('error');
+    notify('کد اشتباهه.');
     return;
   }
 
@@ -879,17 +1053,20 @@ async function toggleAdmin(){
   // پیش‌نمایش گمراه‌کننده نباشه (دکمه‌های ادمین نشون بده که کاری نمی‌کنن)،
   // صریح اعلام می‌کنیم فقط پیش‌نمایشه.
   if(await verifyPinRemote('admin', pin)){
+    haptic('success');
     isAdmin = true; currentPin = pin; currentRole = 'admin';
     updateAdminBtnLabel();
     renderAll();
-    alert('⚠️ این فقط پیش‌نمایشه. برای اقدامات واقعی (ساخت/ویرایش/حذف)، اول باید با تلگرام وارد بشی.');
+    notify('⚠️ این فقط پیش‌نمایشه. برای اقدامات واقعی (ساخت/ویرایش/حذف)، اول باید با تلگرام وارد بشی.');
   } else if(await verifyPinRemote('caller', pin)){
+    haptic('success');
     isCaller = true; currentPin = pin; currentRole = 'caller';
     updateAdminBtnLabel();
     renderAll();
-    alert('⚠️ این فقط پیش‌نمایشه. برای اقدامات واقعی، اول باید با تلگرام وارد بشی.');
+    notify('⚠️ این فقط پیش‌نمایشه. برای اقدامات واقعی، اول باید با تلگرام وارد بشی.');
   } else {
-    alert('کد اشتباهه.');
+    haptic('error');
+    notify('کد اشتباهه.');
   }
 }
 
@@ -897,27 +1074,32 @@ async function unlockAdvanced(){
   const code = await promptModal({title:'دسترسی پیشرفته', label:'کد دسترسی به الگوهای پیشرفته رو وارد کن:'});
   if(code === null) return;
   if(await verifyPinRemote('unlock', code)){
+    haptic('success');
     isUnlocked = true;
     try{ await window.storage.set('memeland:unlocked','true', false); }catch(e){}
     renderAll();
   } else {
-    alert('کد نامعتبره.');
+    haptic('error');
+    notify('کد نامعتبره.');
   }
 }
 
 /* ---------- SIGNALS ---------- */
 function setChannel(ch){
+  haptic('select');
   currentChannel = ch;
   buildCatTabs('catTabs', currentChannel, 'setChannel', false);
   document.getElementById('leaderboardWrap').style.display = ch==='dex' ? 'block' : 'none';
   renderSignals();
 }
 function setActiveCat(cat){
+  haptic('select');
   currentActiveCat = cat;
   buildCatTabs('activeCatTabs', currentActiveCat, 'setActiveCat', true);
   renderActive();
 }
 function setSort(mode){
+  haptic('select');
   sortMode = mode;
   document.querySelectorAll('.sort-chip').forEach(el=> el.classList.toggle('on', el.dataset.sort===mode));
   renderSignals();
@@ -989,6 +1171,12 @@ function renderCoinSearch(){
 }
 
 function renderSignals(){
+  if(signalsRequireLogin){
+    const el = document.getElementById('signalsList');
+    if(el) el.innerHTML = loginRequiredCardHtml();
+    ['statTotal','statWinrate','statAvgR'].forEach(id=>{ const e=document.getElementById(id); if(e) e.textContent='—'; });
+    return;
+  }
   const inChannel = signals.filter(s=>s.channel===currentChannel);
   const closedOnly = inChannel.filter(s => s.status==='win' || s.status==='loss');
   const stats = computeStats(closedOnly);
@@ -1108,7 +1296,7 @@ function renderLeaderboard(){
 }
 
 async function rateSignal(id){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const s = signals.find(x=>x.id===id); if(!s) return;
   const val = await promptModal({title:'امتیازدهی به سیگنال', label:'امتیاز از ۱ تا ۵ (برای این‌که تو «برترین‌ها» بالاتر بیاد):', value: s.rating||0, inputType:'number', min:0, max:5});
   if(val===null) return;
@@ -1117,12 +1305,12 @@ async function rateSignal(id){
     method: 'PATCH', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
     body: JSON.stringify({ rating: n }),
   });
-  if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('ثبت امتیاز ناموفق بود: ' + (e.error||resp.status)); return; }
+  if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ثبت امتیاز ناموفق بود: ' + (e.error||resp.status)); return; }
   await loadSignals(); renderAll();
 }
 
 async function quickUpdateSignal(id){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const s = signals.find(x=>x.id===id); if(!s) return;
   const upd = await quickResultModal({result: s.result, status: s.status});
   if(upd===null) return;
@@ -1130,16 +1318,16 @@ async function quickUpdateSignal(id){
     method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
     body: JSON.stringify({ result: upd.result, outcome_status: upd.status }),
   });
-  if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('ثبت نتیجه ناموفق بود: ' + (e.error||resp.status)); return; }
+  if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ثبت نتیجه ناموفق بود: ' + (e.error||resp.status)); return; }
   await loadSignals(); renderAll();
 }
 
 async function toggleEntryWindow(id){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const resp = await fetch(SITE_API + '/signals/' + id + '/toggle-entry', {
     method: 'POST', headers: {'Authorization':'Bearer '+mySession.token},
   });
-  if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('این کار ناموفق بود: ' + (e.error||resp.status)); return; }
+  if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('این کار ناموفق بود: ' + (e.error||resp.status)); return; }
   await loadSignals(); renderActive();
 }
 
@@ -1161,16 +1349,16 @@ function toggleBA(btn, imgId){
 async function deleteItem(kind, id){
   if(!(await confirmModal('حذف بشه؟'))) return;
   if(kind === 'signals'){
-    if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+    if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
     const resp = await fetch(SITE_API + '/signals/' + id, {
       method: 'DELETE', headers: {'Authorization':'Bearer '+mySession.token},
     });
-    if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('حذف ناموفق بود: ' + (e.error||resp.status)); return; }
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('حذف ناموفق بود: ' + (e.error||resp.status)); return; }
     await loadSignals(); renderAll();
     return;
   }
   // ⚠️ همون دلیل saveStrategy/saveArticle — persist(kind) بدون mySession واقعی ساکت fail می‌کنه.
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const arr = {articles, strategies}[kind];
   const idx = arr.findIndex(x=>x.id===id);
   if(idx>-1) arr.splice(idx,1);
@@ -1181,6 +1369,7 @@ async function deleteItem(kind, id){
 function renderActive(){
   const el = document.getElementById('activeList');
   if(!el) return;
+  if(signalsRequireLogin){ el.innerHTML = loginRequiredCardHtml(); return; }
   const fullAccess = hasFullSignalAccess();
   let open = signals.filter(s=>s.status==='open');
   if(currentActiveCat!=='all') open = open.filter(s=>s.channel===currentActiveCat);
@@ -1244,11 +1433,142 @@ function getCallerGroups(){
 function getCallerNames(){
   return getCallerGroups().map(g=>g.name);
 }
+// ================= فاز ۳: لیدربورد دوبخشی (کالرها + سیگنال‌دهندگان) =================
+let callersView = 'leaderboard';   // 'leaderboard' | 'list' (لیست کامل قبلی، دست‌نخورده)
+let leaderboardKind = 'callers';   // 'callers' | 'signal_givers'
+let leaderboardData = { callers: [], signal_givers: [] };
+
+async function loadLeaderboard(){
+  try{
+    const resp = await fetch(SITE_API + '/leaderboard?period=week');
+    if(!resp.ok){ console.error('loadLeaderboard status', resp.status); return; }
+    leaderboardData = await resp.json();
+  }catch(e){ console.error('loadLeaderboard exception', e); }
+}
+
+function setCallersView(v){
+  haptic('select');
+  callersView = v;
+  document.getElementById('callersViewLbTab').classList.toggle('active-alt', v==='leaderboard');
+  document.getElementById('callersViewListTab').classList.toggle('active-alt', v==='list');
+  document.getElementById('leaderboardKindTabs').style.display = v==='leaderboard' ? 'flex' : 'none';
+  document.getElementById('leaderboardList').style.display = v==='leaderboard' ? '' : 'none';
+  document.getElementById('callersList').style.display = v==='list' ? '' : 'none';
+}
+
+function setLeaderboardKind(k){
+  haptic('select');
+  leaderboardKind = k;
+  document.getElementById('lbKindCallersTab').classList.toggle('active-alt', k==='callers');
+  document.getElementById('lbKindGiversTab').classList.toggle('active-alt', k==='signal_givers');
+  renderCallerLeaderboard();
+}
+
+function renderCallerLeaderboard(){
+  const el = document.getElementById('leaderboardList');
+  if(!el) return;
+  const rows = leaderboardData[leaderboardKind] || [];
+  if(rows.length===0){ el.innerHTML = '<div class="empty-state">هنوز داده‌ای برای این لیدربورد نیست.</div>'; return; }
+  const medals = ['🥇','🥈','🥉'];
+  el.innerHTML = rows.map((r,i)=>{
+    const rank = medals[i] || `#${i+1}`;
+    if(leaderboardKind === 'callers'){
+      const tierBadge = r.tier_badge ? `<span title="${esc(r.tier||'')}">${r.tier_badge}</span> ` : '';
+      const adminBtn = isAdmin ? `<button class="btn btn-secondary" style="padding:2px 8px; font-size:11px;" onclick="promptSetCallerTier(${r.caller_telegram_id||'null'}, '${esc(r.caller_name||'').replace(/'/g,"\\'")}', '${r.tier||''}')">تیر</button>` : '';
+      return `<div class="card"><div class="card-row">
+        <div class="rank-badge mono">${rank}</div>
+        <div class="card-main"><div class="card-top"><span class="name">${tierBadge}👤 ${esc(r.caller_name||'ناشناس')}</span></div>
+        <div class="card-meta">${r.count} رأی</div></div>
+        <div class="result"><div class="result-val" style="color:var(--gold);">${r.avg_rating}★</div></div>
+        ${adminBtn}
+      </div></div>`;
+    }
+    const name = r.full_name || r.username || 'ناشناس';
+    return `<div class="card"><div class="card-row">
+      <div class="rank-badge mono">${rank}</div>
+      <div class="card-main"><div class="card-top"><span class="name">📡 ${esc(name)}</span></div>
+      <div class="card-meta">${r.count} سیگنال · ${r.wins} برد</div></div>
+      <div class="result"><div class="result-val" style="color:var(--accent);">${r.points} امتیاز</div></div>
+    </div></div>`;
+  }).join('');
+}
+
+async function promptSetCallerTier(callerTelegramId, callerName, currentTier){
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
+  const t = await promptModal({title:'تعیین تیر کالر', label:'یکی بنویس: bronze / silver / gold / diamond — یا خالی بذار برای حذف', value: currentTier||''});
+  if(t===null) return;
+  const tier = t.trim().toLowerCase();
+  if(tier && !['bronze','silver','gold','diamond'].includes(tier)){ notify('تیر نامعتبره — باید bronze/silver/gold/diamond یا خالی باشه.'); return; }
+  try{
+    const resp = await fetch(SITE_API + '/callers/tier', {
+      method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
+      body: JSON.stringify({ caller_telegram_id: callerTelegramId, caller_name: callerName, tier: tier || null }),
+    });
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ثبت تیر ناموفق بود: ' + (e.error||resp.status)); return; }
+  }catch(e){ notify('ثبت تیر ناموفق بود.'); return; }
+  await loadLeaderboard();
+  renderCallerLeaderboard();
+}
+
+// ================= فاز ۵: لندینگ‌پیج (خانه) =================
+let homeData = { stats: {total_closed:0, win_rate:0, active_signal_givers:0}, top_recent_wins: [] };
+
+async function loadHome(){
+  try{
+    const resp = await fetch(SITE_API + '/home');
+    if(!resp.ok){ console.error('loadHome status', resp.status); return; }
+    homeData = await resp.json();
+  }catch(e){ console.error('loadHome exception', e); }
+}
+
+function renderHome(){
+  const statsEl = document.getElementById('homeStatClosed');
+  if(!statsEl) return;
+  document.getElementById('homeStatClosed').textContent = homeData.stats.total_closed;
+  document.getElementById('homeStatWinRate').textContent = homeData.stats.win_rate + '%';
+  document.getElementById('homeStatGivers').textContent = homeData.stats.active_signal_givers;
+
+  const winsEl = document.getElementById('homeTopWinsList');
+  const wins = homeData.top_recent_wins || [];
+  winsEl.innerHTML = wins.length ? wins.map((s,i)=>{
+    if(s.locked){
+      return `<div class="card"><div class="card-row">
+        <div class="rank-badge mono">#${i+1}</div>
+        <div class="card-main"><div class="card-top"><span class="name">🔒 سیگنال VIP</span></div>
+        <div class="card-meta">جزئیات این کال قفله — با اشتراک باز می‌شه.</div></div>
+        <div class="result"><div class="result-val win">${esc(s.result||'')}</div></div>
+      </div></div>`;
+    }
+    const caller = s.caller_name || s.owner_first_name || s.owner_username || 'ناشناس';
+    return `<div class="card"><div class="card-row">
+      <div class="rank-badge mono">#${i+1}</div>
+      <div class="card-main"><div class="card-top"><span class="name">${esc(s.coin||'')}</span></div>
+      <div class="card-meta">توسط ${esc(caller)}</div></div>
+      <div class="result"><div class="result-val win">${esc(s.result||'')}</div></div>
+    </div></div>`;
+  }).join('') : '<div class="empty-state">هنوز نتیجه‌ای تو ۷ روز اخیر ثبت نشده.</div>';
+
+  const ctaEl = document.getElementById('homeCtaRow');
+  const botLink = (typeof TELEGRAM_BOT_USERNAME !== 'undefined' && TELEGRAM_BOT_USERNAME && TELEGRAM_BOT_USERNAME !== 'YOUR_BOT_USERNAME')
+    ? `<a class="btn btn-primary" style="flex:1; text-align:center;" href="https://t.me/${TELEGRAM_BOT_USERNAME}" target="_blank">📲 ادامه در تلگرام</a>` : '';
+  const addBtn = isAdmin ? `<button class="btn btn-secondary" style="flex:1;" onclick="setSection('signals'); goAddFrom('signals');">➕ ثبت سیگنال جدید</button>` : '';
+  ctaEl.innerHTML = botLink + addBtn;
+
+  const artEl = document.getElementById('homeArticlesList');
+  const latest = [...articles].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,2);
+  artEl.innerHTML = latest.length ? latest.map(a=>`<div class="card">
+    <div class="name">${esc(a.title)}</div>
+    <div class="result-date mono" style="margin-top:4px;">${a.date||''}</div>
+  </div>`).join('') : '<div class="empty-state">هنوز مقاله‌ای منتشر نشده.</div>';
+}
+
 function renderCallers(){
   const el = document.getElementById('callersList');
   if(!el) return;
   const groups = getCallerGroups();
   if(groups.length===0){ el.innerHTML = '<div class="empty-state">هنوز کالری با نام ثبت‌شده نداریم.</div>'; return; }
+  const tierByName = {};
+  (leaderboardData.callers||[]).forEach(c=>{ if(c.caller_name) tierByName[c.caller_name] = c; });
   el.innerHTML = groups.map(({name, ownerTelegramId})=>{
     const theirSignals = ownerTelegramId
       ? signals.filter(s=>s.ownerTelegramId===ownerTelegramId)
@@ -1258,6 +1578,9 @@ function renderCallers(){
     const winrate = closed.length ? Math.round((wins/closed.length)*100) : 0;
     const rdata = callerRatings[name] || {votes:[], comments:[]};
     const avg = rdata.votes.length ? (rdata.votes.reduce((a,b)=>a+b,0)/rdata.votes.length).toFixed(1) : '—';
+    const tierInfo = tierByName[name];
+    const tierBadge = tierInfo && tierInfo.tier_badge ? `<span title="${esc(tierInfo.tier||'')}">${tierInfo.tier_badge}</span> ` : '';
+    const tierBtn = isAdmin ? `<button class="mini-btn" style="padding:2px 8px; font-size:10px;" onclick="promptSetCallerTier(${(tierInfo&&tierInfo.caller_telegram_id)||ownerTelegramId||'null'}, '${esc(name).replace(/'/g,"\\'")}', '${(tierInfo&&tierInfo.tier)||''}')">تیر</button>` : '';
     const commentsHtml = (rdata.comments||[]).slice().reverse().slice(0,4).map(c=>`
       <div style="border-top:1px solid var(--glass-b); padding-top:8px; margin-top:8px;">
         <div style="font-size:11.5px; color:var(--text); display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -1267,9 +1590,9 @@ function renderCallers(){
         ${c.text ? `<div style="font-size:11.5px; color:var(--muted); margin-top:3px;">${esc(c.text)}</div>` : ''}
       </div>`).join('');
     return `<div class="card">
-      <div class="card-top"><span class="name">👤 ${esc(name)}</span><span class="badge-tag badge-status">${winrate}% وین‌ریت</span></div>
+      <div class="card-top"><span class="name">${tierBadge}👤 ${esc(name)}</span><span class="badge-tag badge-status">${winrate}% وین‌ریت</span></div>
       <div class="card-meta">${theirSignals.length} سیگنال ثبت‌شده · امتیاز کامیونیتی: <span style="color:var(--gold);">${avg}${rdata.votes.length?` (${rdata.votes.length} رأی)`:''}</span></div>
-      <div class="admin-actions"><button class="mini-btn accent" onclick="openRateCallerModal('${esc(name)}')">⭐ ثبت امتیاز و نظر</button></div>
+      <div class="admin-actions"><button class="mini-btn accent" onclick="openRateCallerModal('${esc(name)}')">⭐ ثبت امتیاز و نظر</button>${tierBtn}</div>
       ${commentsHtml}
     </div>`;
   }).join('');
@@ -1282,7 +1605,7 @@ function renderCallers(){
 // عوض کنه، امتیازهای قبلیش از کالر «جدید» جدا می‌موندن.
 let _ratingTargetTelegramId = null;
 function openRateCallerModal(name){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const match = signals.find(s => s.caller === name && s.ownerTelegramId);
   _ratingTargetTelegramId = match ? match.ownerTelegramId : null;
   document.getElementById('modalBody').innerHTML = `
@@ -1296,37 +1619,42 @@ function openRateCallerModal(name){
   document.getElementById('modalOverlay').classList.add('show');
 }
 async function submitCallerRating(name){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const stars = parseInt(document.getElementById('rcStars').value);
   const text = document.getElementById('rcText').value.trim();
   const nameInput = document.getElementById('rcName').value.trim();
-  if(nameInput){ myName = nameInput; try{ await window.storage.set('memeland:my-name', myName, false); }catch(e){} }
+  if(nameInput){ myName = nameInput; await setProfileName(myName); }
   try{
     const resp = await fetch(SITE_API + '/ratings', {
       method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
       body: JSON.stringify({ caller_telegram_id: _ratingTargetTelegramId, caller_name: name, rating: stars, comment: text || null }),
     });
-    if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('ثبت امتیاز ناموفق بود: ' + (e.error||resp.status)); return; }
-  }catch(e){ alert('ثبت امتیاز ناموفق بود.'); return; }
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ثبت امتیاز ناموفق بود: ' + (e.error||resp.status)); return; }
+  }catch(e){ notify('ثبت امتیاز ناموفق بود.'); return; }
   await loadCallerRatings();
+  await loadLeaderboard();
   closeModal();
   renderCallers();
+  renderCallerLeaderboard();
 }
 async function deleteCallerRating(id, name){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   if(!(await confirmModal('این رأی/نظر حذف بشه؟'))) return;
   try{
     const resp = await fetch(SITE_API + '/ratings/' + id, {
       method: 'DELETE', headers: {'Authorization':'Bearer '+mySession.token},
     });
-    if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('حذف ناموفق بود: ' + (e.error||resp.status)); return; }
-  }catch(e){ alert('حذف ناموفق بود.'); return; }
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('حذف ناموفق بود: ' + (e.error||resp.status)); return; }
+  }catch(e){ notify('حذف ناموفق بود.'); return; }
   await loadCallerRatings();
+  await loadLeaderboard();
   renderCallers();
+  renderCallerLeaderboard();
 }
 
 /* ---------- STRATEGIES ---------- */
 function setStratTier(t){
+  haptic('select');
   currentStratTier = t;
   document.getElementById('stSimpleTab').className = 'tab' + (t==='simple'?' active-alt':'');
   document.getElementById('stAdvTab').className = 'tab' + (t==='advanced'?' active-dex':'');
@@ -1374,7 +1702,7 @@ function renderAll(){
   document.getElementById('mainFab').style.display = canAddHere ? 'block' : 'none';
   document.getElementById('bulkFab').style.display = (isAdmin && currentSection==='signals') ? 'block' : 'none';
   document.getElementById('navAdminItem').style.display = isAdmin ? 'flex' : 'none';
-  renderSignals(); renderActive(); renderCallers(); renderStrategies(); renderArticles(); renderAdminPanel();
+  renderSignals(); renderActive(); renderCallers(); renderCallerLeaderboard(); renderStrategies(); renderArticles(); renderAdminPanel(); renderHome();
 }
 
 function renderAdminPanel(){
@@ -1394,7 +1722,7 @@ function goAddFrom(section){
 function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
 
 function openBulkModal(){
-  if(!isAdmin){ alert('فقط ادمین دسترسی درون‌ریزی گروهی داره.'); return; }
+  if(!isAdmin){ notify('فقط ادمین دسترسی درون‌ریزی گروهی داره.'); return; }
   document.getElementById('modalBody').innerHTML = `
     <h3 class="display">📥 درون‌ریزی گروهی سیگنال‌ها</h3>
     <p style="font-size:11.5px; color:var(--muted); line-height:2; margin-bottom:12px;">
@@ -1412,9 +1740,9 @@ function openBulkModal(){
 }
 
 async function runBulkImport(){
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const raw = document.getElementById('bulkText').value.trim();
-  if(!raw){ alert('چیزی وارد نکردی.'); return; }
+  if(!raw){ notify('چیزی وارد نکردی.'); return; }
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
   const validCats = Object.keys(CATS);
   let added = 0, skipped = 0;
@@ -1461,11 +1789,11 @@ async function runBulkImport(){
   await loadSignals();
   closeModal();
   renderAll();
-  alert(`${added} سیگنال اضافه شد${skipped ? '، ' + skipped + ' خط نامعتبر رد شد' : ''}.`);
+  notify(`${added} سیگنال اضافه شد${skipped ? '، ' + skipped + ' خط نامعتبر رد شد' : ''}.`);
 }
 
 function openAddModal(){
-  if(!isAdmin && !(isCaller && currentSection==='signals')){ alert('برای افزودن محتوا اول باید حالت ادمین یا کالر رو فعال کنی.'); return; }
+  if(!isAdmin && !(isCaller && currentSection==='signals')){ notify('برای افزودن محتوا اول باید حالت ادمین یا کالر رو فعال کنی.'); return; }
   const forms = {
     signals: signalForm(), strategies: strategyForm(), articles: articleForm()
   };
@@ -1521,14 +1849,39 @@ function signalForm(editId){
         <option value="call" ${s&&s.dexType==='call'?'selected':''}>⚡ کال سریع (معرفی زودهنگام)</option>
       </select></div>
       <div class="field"><label>لینک خرید GMGN (رفرال)</label><input id="fBuyLink" value="${s&&s.buyLink?esc(s.buyLink):''}" placeholder="https://gmgn.ai/..."></div></div>
-      <div class="field"><label>آدرس قرارداد (CA)</label><input id="fContractAddress" value="${s&&s.contractAddress?esc(s.contractAddress):''}" placeholder="0x... یا آدرس سولانا"></div>
+      <div class="field"><label>آدرس قرارداد (CA)</label>
+        <div style="display:flex; gap:6px;">
+          <input id="fContractAddress" style="flex:1;" value="${s&&s.contractAddress?esc(s.contractAddress):''}" placeholder="0x... یا آدرس سولانا">
+          <button type="button" class="btn btn-secondary" onclick="detectChain()">تشخیص شبکه</button>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>شبکه (chain)</label><input id="fChain" value="${s&&s.chain?esc(s.chain):''}" placeholder="eth / bsc / solana / base / ..."></div>
+        <div class="field"><label>قیمت ورود (آلارم گروه)</label><input id="fEntryPrice" type="number" step="any" value="${s&&s.entryPrice!=null?s.entryPrice:''}" placeholder="مثلاً 0.0012"></div>
+      </div>
     </div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">انصراف</button><button class="btn btn-primary" onclick="saveSignal('${editId||''}')">ذخیره</button></div>`;
 }
+async function detectChain(){
+  const address = document.getElementById('fContractAddress').value.trim();
+  if(!address){ notify('اول آدرس قرارداد رو وارد کن'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
+  const resp = await fetch(SITE_API + '/detect-chain', {
+    method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+mySession.token},
+    body: JSON.stringify({ contract_address: address }),
+  });
+  const data = await resp.json().catch(()=>({}));
+  if(data.chain){
+    document.getElementById('fChain').value = data.chain;
+    notify('شبکه پیدا شد: ' + data.chain + (data.price?` (قیمت فعلی: ${data.price})`:''));
+  } else {
+    notify('شبکه پیدا نشد — دستی وارد کن (eth / bsc / solana / base / arbitrum / polygon_pos / avax / optimism).');
+  }
+}
 async function saveSignal(editId){
   const coin = document.getElementById('fCoin').value.trim();
-  if(!coin){ alert('نماد رو وارد کن'); return; }
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!coin){ notify('نماد رو وارد کن'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
 
   const channel = document.getElementById('fChannel').value;
   const tier = document.getElementById('fTier').value;
@@ -1548,6 +1901,9 @@ async function saveSignal(editId){
   const dexType = document.getElementById('fDexType').value;
   const buyLink = document.getElementById('fBuyLink').value.trim();
   const contractAddress = document.getElementById('fContractAddress').value.trim();
+  const chain = document.getElementById('fChain').value.trim();
+  const entryPriceRaw = document.getElementById('fEntryPrice').value;
+  const entryPrice = entryPriceRaw === '' ? null : parseFloat(entryPriceRaw);
   // گزینه‌ی «بدون امتیاز» مقدار '0' داره، نه خالی — همیشه یه عدد واقعی
   // می‌فرستیم (نه null) چون این select هیچ‌وقت مقدار خالی نداره.
   const rating = parseInt(document.getElementById('fRating').value, 10);
@@ -1561,9 +1917,10 @@ async function saveSignal(editId){
         channel, coin, tier, entry_open: entryOpen, note, hashtag,
         hold_period: holdPeriod, thesis, rating,
         buy_link: buyLink, contract_address: contractAddress, dex_type: dexType,
+        chain, entry_price: entryPrice,
       }),
     });
-    if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('ذخیره ناموفق بود: ' + (e.error||resp.status)); return; }
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ذخیره ناموفق بود: ' + (e.error||resp.status)); return; }
     // اگه نتیجه/وضعیت هم عوض شده، جدا (چون تاریخچه لازم داره) ثبتش کن
     const s = signals.find(x=>x.id===sid);
     if(s && (result !== (s.result||'') || status !== (s.status||'open'))){
@@ -1578,9 +1935,10 @@ async function saveSignal(editId){
       body: JSON.stringify({
         channel, coin, direction: null, tier, note, hashtag, hold_period: holdPeriod,
         thesis, buy_link: buyLink, contract_address: contractAddress, dex_type: dexType,
+        chain, entry_price: entryPrice,
       }),
     });
-    if(!resp.ok){ const e = await resp.json().catch(()=>({})); alert('ثبت ناموفق بود: ' + (e.error||resp.status)); return; }
+    if(!resp.ok){ const e = await resp.json().catch(()=>({})); notify('ثبت ناموفق بود: ' + (e.error||resp.status)); return; }
     const newId = (await resp.json()).id;
     // فیلدهایی که ثبت اولیه نمی‌گیره (entryOpen/rating) رو با یه edit جدا کامل کن
     await fetch(SITE_API + '/signals/' + newId, {
@@ -1605,9 +1963,9 @@ function editSignal(id){ document.getElementById('modalBody').innerHTML = signal
 async function handleBAImageSelect(event, signalId, kind){
   const file = event.target.files[0];
   if(!file) return;
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); event.target.value=''; return; }
-  if(!file.type.startsWith('image/')){ alert('فقط فایل عکس مجازه'); event.target.value=''; return; }
-  if(file.size > 15*1024*1024){ alert('فایل خیلی بزرگه (حداکثر ۱۵ مگابایت خام)'); event.target.value=''; return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); event.target.value=''; return; }
+  if(!file.type.startsWith('image/')){ notify('فقط فایل عکس مجازه'); event.target.value=''; return; }
+  if(file.size > 15*1024*1024){ notify('فایل خیلی بزرگه (حداکثر ۱۵ مگابایت خام)'); event.target.value=''; return; }
 
   const statusEl = document.getElementById('baStatus-'+kind);
   const previewEl = document.getElementById('baPreview-'+kind);
@@ -1621,7 +1979,7 @@ async function handleBAImageSelect(event, signalId, kind){
       body: JSON.stringify({ kind, image_data: dataUrl }),
     });
     const data = await resp.json().catch(()=>({}));
-    if(!resp.ok){ statusEl.textContent=''; alert('آپلود ناموفق بود: ' + (data.error||resp.status)); event.target.value=''; return; }
+    if(!resp.ok){ statusEl.textContent=''; notify('آپلود ناموفق بود: ' + (data.error||resp.status)); event.target.value=''; return; }
     // آرایه‌ی محلی رو هم آپدیت کن تا renderActive جدید رو بدون رفرش کامل ببینه
     const s = signals.find(x=>x.id===signalId);
     if(s){ if(kind==='before') s.beforeImg = data.url; else s.afterImg = data.url; }
@@ -1629,7 +1987,7 @@ async function handleBAImageSelect(event, signalId, kind){
     statusEl.textContent = '✅ آپلود شد';
   }catch(e){
     statusEl.textContent = '';
-    alert('خطا: ' + e.message);
+    notify('خطا: ' + e.message);
   }
   event.target.value = '';
 }
@@ -1670,13 +2028,13 @@ function strategyForm(editId){
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">انصراف</button><button class="btn btn-primary" onclick="saveStrategy('${editId||''}')">ذخیره</button></div>`;
 }
 async function saveStrategy(editId){
-  const title = document.getElementById('stTitle').value.trim(); if(!title){alert('عنوان رو وارد کن'); return;}
+  const title = document.getElementById('stTitle').value.trim(); if(!title){notify('عنوان رو وارد کن'); return;}
   // ⚠️ persist() یعنی window.storage.set(shared=true) که اگه mySession نباشه
   // (مثلاً ادمین فقط با PIN خام واردشده، نه تلگرام) ساکت fail می‌کنه — فقط
   // console.error، بدون alert. قبلاً این‌جا چک نمی‌شد: آرایه‌ی محلی آپدیت و
   // مودال بسته می‌شد انگار موفق بوده، ولی هیچی سمت سرور ذخیره نمی‌شد. الان
   // دقیقاً همون الگوی saveSignal رعایت می‌شه.
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const data = {tier:document.getElementById('stTier').value, title, desc:document.getElementById('stDesc').value.trim()};
   if(editId){ Object.assign(strategies.find(x=>x.id===editId), data); } else { data.id=Date.now().toString(36); strategies.push(data); }
   await persist('strategies'); closeModal(); renderStrategies();
@@ -1692,17 +2050,19 @@ function articleForm(editId){
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">انصراف</button><button class="btn btn-primary" onclick="saveArticle('${editId||''}')">ذخیره</button></div>`;
 }
 async function saveArticle(editId){
-  const title = document.getElementById('arTitle').value.trim(); if(!title){alert('عنوان رو وارد کن'); return;}
+  const title = document.getElementById('arTitle').value.trim(); if(!title){notify('عنوان رو وارد کن'); return;}
   // ⚠️ همون دلیل saveStrategy — بدون این چک، بدون mySession واقعی هم انگار موفق بود.
-  if(!mySession){ alert('اول باید با تلگرام وارد شده باشی.'); return; }
+  if(!mySession){ notify('اول باید با تلگرام وارد شده باشی.'); return; }
   const data = {title, date:document.getElementById('arDate').value, body:document.getElementById('arBody').value.trim()};
   if(editId){ Object.assign(articles.find(x=>x.id===editId), data); } else { data.id=Date.now().toString(36); articles.push(data); }
   await persist('articles'); closeModal(); renderArticles();
 }
 function editArticle(id){ document.getElementById('modalBody').innerHTML = articleForm(id); document.getElementById('modalOverlay').classList.add('show'); }
 
-loadAll();
-restoreSession();
+// ⚠️ فاز ۸: قبلاً این دوتا مستقل (بدون منتظرموندن) اجرا می‌شدن — چون
+// loadSignals دیگه به mySession نیاز داره (برای این‌که لاگین‌شده‌ها ۴۰۱
+// نگیرن)، باید session اول کامل resolve بشه، بعد loadAll شروع کنه.
+restoreSession().then(loadAll);
 buildCatTabs('catTabs', currentChannel, 'setChannel', false);
 buildCatTabs('activeCatTabs', currentActiveCat, 'setActiveCat', true);
 </script>

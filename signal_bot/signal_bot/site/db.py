@@ -50,6 +50,17 @@ def init_db():
     )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_telegram_id ON sessions(telegram_id)")
 
+    # ---------- user_profiles (دائمی، به‌ازای telegram_id — نه به‌ازای session) ----------
+    # ⚠️ قبلاً role فقط رو خودِ session بود، و نام نمایشی فقط تو localStorage
+    # مرورگر؛ یعنی با انقضای session یا عوض‌کردن مرورگر/دستگاه، هردو گم
+    # می‌شدن. این جدول همون دو مقدار رو دائمی، وصل به هویت تلگرام نگه می‌داره.
+    c.execute("""CREATE TABLE IF NOT EXISTS user_profiles(
+        telegram_id INTEGER PRIMARY KEY,
+        display_name TEXT,
+        role TEXT,
+        updated_at TEXT NOT NULL
+    )""")
+
     # ---------- signals (public feed) ----------
     # ⚠️ این بخش دقیقاً از migrate_legacy_signals.sql کپی شده — اون رو واقعاً دیدم.
     c.execute("""CREATE TABLE IF NOT EXISTS signals(
@@ -81,6 +92,18 @@ def init_db():
     c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_bot_signal_id ON signals(bot_signal_id) WHERE bot_signal_id IS NOT NULL")
     c.execute("CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at)")
 
+    # آلارم قیمت ورود (chain لازمه چون contract_address به‌تنهایی چندمعنایی‌ه —
+    # همون آدرس می‌تونه رو چند شبکه‌ی EVM مختلف، توکن‌های کاملاً نامرتبط باشه).
+    # entry_alert_sent: 0/1، برای این‌که هر سیگنال فقط یه‌بار آلارم بده.
+    for col, typ in [("chain", "TEXT"), ("entry_price", "REAL"), ("entry_alert_sent", "INTEGER DEFAULT 0")]:
+        try:
+            c.execute(f"ALTER TABLE signals ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+    c.execute("""CREATE INDEX IF NOT EXISTS idx_signals_entry_alert
+                 ON signals(entry_alert_sent) WHERE contract_address IS NOT NULL AND entry_price IS NOT NULL""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS signal_result_history(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         signal_id INTEGER NOT NULL REFERENCES signals(id) ON DELETE CASCADE,
@@ -106,6 +129,18 @@ def init_db():
         UNIQUE(rater_telegram_id, caller_telegram_id, caller_name)
     )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_caller_ratings_caller ON caller_ratings(caller_telegram_id, caller_name)")
+
+    # ---------- caller_tiers (دستی، فقط ادمین می‌ده/می‌گیره — نه محاسبه‌ی خودکار) ----------
+    # caller_key = str(caller_telegram_id) اگه باشه، وگرنه 'name:'+caller_name —
+    # همون الگوی گروه‌بندی get_top_callers.
+    c.execute("""CREATE TABLE IF NOT EXISTS caller_tiers(
+        caller_key TEXT PRIMARY KEY,
+        caller_telegram_id INTEGER,
+        caller_name TEXT,
+        tier TEXT NOT NULL,
+        set_by INTEGER,
+        updated_at TEXT NOT NULL
+    )""")
 
     # ---------- audit ----------
     c.execute("""CREATE TABLE IF NOT EXISTS admin_action_log(

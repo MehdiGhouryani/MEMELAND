@@ -160,6 +160,72 @@ def get_all_ratings():
     return rows
 
 
+_VALID_TIERS = ("bronze", "silver", "gold", "diamond")
+_TIER_BADGE = {"bronze": "🥉", "silver": "🥈", "gold": "🥇", "diamond": "💎"}
+
+
+def _caller_key(caller_telegram_id=None, caller_name=None) -> str:
+    return str(caller_telegram_id) if caller_telegram_id else f"name:{caller_name}"
+
+
+def set_caller_tier(caller_telegram_id, caller_name, tier, set_by: int):
+    """tier=None یا '' یعنی حذف تیر (نه ست‌کردن یه چیز خالی). فقط ادمین صدا
+    می‌زنه (چک تو routes.py) — این تابع خودش نقش رو چک نمی‌کنه، فقط ذخیره."""
+    key = _caller_key(caller_telegram_id, caller_name)
+    conn = get_db()
+    if not tier:
+        conn.execute("DELETE FROM caller_tiers WHERE caller_key=?", (key,))
+    else:
+        if tier not in _VALID_TIERS:
+            conn.close()
+            raise ValueError(f"تیر نامعتبر: {tier!r} — باید یکی از {_VALID_TIERS} باشه")
+        conn.execute(
+            "INSERT INTO caller_tiers (caller_key, caller_telegram_id, caller_name, tier, set_by, updated_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(caller_key) DO UPDATE SET "
+            "tier=excluded.tier, set_by=excluded.set_by, updated_at=excluded.updated_at",
+            (key, caller_telegram_id, caller_name, tier, set_by, datetime.utcnow().isoformat()),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_all_caller_tiers() -> dict:
+    """{caller_key: tier} — برای join سریع تو لیست‌ها، بدون یه query جدا به‌ازای هر کالر."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT caller_key, tier FROM caller_tiers")
+    out = {k: t for k, t in c.fetchall()}
+    conn.close()
+    return out
+
+
+def get_top_callers(limit: int = 10):
+    """فاز ۳: نسخه‌ی مرتب‌شده و محدودشده‌ی get_all_ratings_summary، مخصوص
+    لیدربورد — تابع قبلی رو عمداً دست‌نزدم چون جای دیگه (صفحه‌ی کالرها) با
+    فرض «همه‌ی نتایج، بدون ترتیب خاص» صداش می‌زنه.
+    ⚠️ حالا tier (دستی، فاز جدید) هم اضافه می‌شه، اگه ادمین ست کرده باشه."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT COALESCE(CAST(caller_telegram_id AS TEXT), 'name:'||caller_name) as gkey,
+               caller_telegram_id, caller_name, AVG(rating) as avg_rating, COUNT(*) as n
+        FROM caller_ratings
+        GROUP BY gkey
+        ORDER BY avg_rating DESC, n DESC
+        LIMIT ?
+    """, (limit,))
+    tiers = get_all_caller_tiers()
+    rows = []
+    for gkey, ctid, name, avg, n in c.fetchall():
+        rows.append({
+            "caller_telegram_id": ctid,
+            "caller_name": name, "avg_rating": round(avg, 2), "count": n,
+            "tier": tiers.get(gkey), "tier_badge": _TIER_BADGE.get(tiers.get(gkey)),
+        })
+    conn.close()
+    return rows
+
+
 def get_all_ratings_summary():
     """میانگین + تعداد رأی به ازای هر کالر — برای صفحه‌ی «کالرها».
     ⚠️ گروه‌بندی بر اساس caller_telegram_id وقتی موجوده (نه جفت
@@ -174,11 +240,13 @@ def get_all_ratings_summary():
         FROM caller_ratings
         GROUP BY gkey
     """)
+    tiers = get_all_caller_tiers()
     rows = []
     for gkey, ctid, name, avg, n in c.fetchall():
         rows.append({
             "caller_telegram_id": ctid,
             "caller_name": name, "avg_rating": round(avg, 2), "count": n,
+            "tier": tiers.get(gkey), "tier_badge": _TIER_BADGE.get(tiers.get(gkey)),
         })
     conn.close()
     return rows

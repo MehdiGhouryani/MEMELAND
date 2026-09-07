@@ -15,7 +15,7 @@ from signal_bot.site import auth as site_auth
 
 from signal_bot.handlers import common, profile, signals, payments, support, admin
 from signal_bot.handlers.text_router import text_handler
-from signal_bot.jobs.scheduled import daily_leaderboard_post, notify_rank_changes
+from signal_bot.jobs.scheduled import daily_leaderboard_post, notify_rank_changes, check_entry_alerts
 from signal_bot.web.ipn_server import start_web_server
 
 WEB_RUNNER = None
@@ -85,10 +85,11 @@ def main():
     # نکته ترتیب: پترن‌های اختصاصی‌تر (dir_) قبل از پترن‌های عمومی‌تر ثبت می‌شن.
     app.add_handler(CallbackQueryHandler(signals.direction_callback, pattern="^dir_"))
     app.add_handler(CallbackQueryHandler(common.common_callback,
-                                         pattern="^(back_main|cancel)$"))
+                                         pattern="^(back_main|cancel|menu_caller_hub)$"))
     app.add_handler(CallbackQueryHandler(profile.profile_callback,
                                          pattern="^(menu_leader|leader_week|leader_month|leader_all|"
-                                                 "menu_stats|menu_profile|menu_halloffame|menu_myrewards)$"))
+                                                 "menu_stats|menu_profile|menu_profile_details|"
+                                                 "menu_halloffame|menu_myrewards)$"))
     app.add_handler(CallbackQueryHandler(signals.signals_callback,
                                          pattern="^(menu_mysignals|mysig_open|mysig_approved|mysig_rejected|"
                                                  "menu_signal|sigtype_full|sigtype_fast|ch_.*|"
@@ -114,6 +115,7 @@ def main():
     if jq:
         jq.run_daily(daily_leaderboard_post, time=datetime.strptime("22:00", "%H:%M").time())
         jq.run_repeating(notify_rank_changes, interval=21600, first=60)
+        jq.run_repeating(check_entry_alerts, interval=45, first=30)
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("  Signal Master Bot — فاز ۵ ✅")

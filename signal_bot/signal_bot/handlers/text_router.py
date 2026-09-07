@@ -33,6 +33,7 @@ STEP_HANDLERS = {
     "support_custom":     support_handlers.handle_step_support_custom,
     # ادمین
     "broadcast":          admin_handlers.handle_step_broadcast,
+    "set_solana_wallet":  admin_handlers.handle_step_set_solana_wallet,
     "find_user":          admin_handlers.handle_step_find_user,
     "set_pts":            admin_handlers.handle_step_set_pts,
     "grant_reward":       admin_handlers.handle_step_grant_reward,

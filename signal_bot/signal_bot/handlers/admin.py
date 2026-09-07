@@ -65,7 +65,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 <b>واریزها</b> — استخر جایزه + حمایت مستقیم\n"
             f"📢 <b>همگانی</b> — پیام به همه‌ی کاربران\n"
             f"📊 <b>آمار</b> — کاربر/سیگنال/جایزه/VIP Helper\n"
-            f"👥 <b>کاربران</b> — جست‌وجو → بلاک/امتیاز/رول/پاداش/VIP\n"
+            f"👥 <b>کاربران</b> — جست‌وجو → بلاک/امتیاز/درجه/پاداش/VIP\n"
             f"🏆 <b>پایان دوره</b> — تقسیم ۵۰/۳۰/۲۰٪، فصل بعد خودکاره\n"
             f"📤 <b>اکسل</b> — خروجی CSV امتیازها\n"
             f"🆕 <b>فصل جدید</b> — فقط اگه فصلی فعال نبود لازمه\n"
@@ -74,11 +74,24 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<code>/fastcall کوین [long/short]</code>\n"
             f"<code>/fullsignal [کوین] [جهت] [توضیح]</code> (± عکس)\n"
             f"{SEP}\n"
-            f"🎖  <b>سقف سیگنال روزانه هر رول</b>\n"
+            f"🎖  <b>سقف سیگنال روزانه هر درجه</b>\n"
             f"{role_lines}\n"
             f"{SEP}\n"
             f"💎  VIP Helper فقط سیگنال تأیید/رد می‌کنه، به بقیه‌ی پنل دسترسی نداره.",
             reply_markup=admin_kb(), parse_mode=ParseMode.HTML
+        )
+
+    elif data == "adm_solana_wallet":
+        if not is_admin:
+            return
+        from signal_bot.site.kv import kv_get
+        current = kv_get("settings:solana_donate_wallet")
+        context.chat_data["step"] = "set_solana_wallet"
+        await q.edit_message_text(
+            f"<b>💜  ولت سولانا برای «حمایت از ما»</b>\n{SEP}\n\n"
+            f"مقدار فعلی: <code>{esc(current) if current else 'ست نشده'}</code>\n\n"
+            "آدرس ولت جدید رو بفرست (یا برای حذف کامل دکمه، <code>-</code> بفرست):",
+            reply_markup=back_main_kb(), parse_mode=ParseMode.HTML
         )
 
     elif data == "adm_pending":
@@ -327,8 +340,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = int(data.split("_")[1])
         current_role = users_repo.get_role(target_id)
         await q.edit_message_text(
-            f"<b>🎖  تغییر رول کاربر {target_id}</b>\n\n"
-            f"رول فعلی: <b>{access.get_role_label(current_role)}</b>\n\nرول جدید رو انتخاب کن:",
+            f"<b>🎖  تغییر درجه‌ی کاربر {target_id}</b>\n\n"
+            f"درجه‌ی فعلی: <b>{access.get_role_label(current_role)}</b>\n\nدرجه‌ی جدید رو انتخاب کن:",
             reply_markup=role_picker_kb(target_id), parse_mode=ParseMode.HTML
         )
 
@@ -339,12 +352,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, target_id_str, role_key = data.split("_", 2)
         target_id = int(target_id_str)
         if role_key not in ROLE_LABELS:
-            await q.answer("رول نامعتبر!", show_alert=True)
+            await q.answer("درجه‌ی نامعتبر!", show_alert=True)
             return
         users_repo.set_role(target_id, role_key)
-        await q.edit_message_text(f"✅  رول کاربر {target_id} به «{ROLE_LABELS[role_key]}» تغییر کرد.")
+        await q.edit_message_text(f"✅  درجه‌ی کاربر {target_id} به «{ROLE_LABELS[role_key]}» تغییر کرد.")
         await safe_send_message(context.bot, chat_id=target_id,
-            text=f"🎖  <b>رول شما تغییر کرد!</b>\n\nرول جدید: <b>{ROLE_LABELS[role_key]}</b>",
+            text=f"🎖  <b>درجه‌ی شما تغییر کرد!</b>\n\nدرجه‌ی جدید: <b>{ROLE_LABELS[role_key]}</b>",
             parse_mode=ParseMode.HTML)
 
     elif data.startswith("vip_add_"):
@@ -420,6 +433,20 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════
 #  مراحل ورودی متنی پنل ادمین (صدا زده می‌شه از handlers/text_router.py)
 # ══════════════════════════════════════════════════════════
+async def handle_step_set_solana_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE, user, text):
+    if user.id not in ADMIN_IDS:
+        return
+    from signal_bot.site.kv import kv_set, kv_delete
+    text = text.strip()
+    if text == "-":
+        kv_delete("settings:solana_donate_wallet")
+        await update.message.reply_html("✅  آدرس ولت حذف شد — دکمه‌ی «واریز مستقیم» دیگه نشون داده نمی‌شه.")
+    else:
+        kv_set("settings:solana_donate_wallet", text)
+        await update.message.reply_html(f"✅  آدرس ولت ذخیره شد:\n<code>{esc(text)}</code>")
+    context.chat_data.clear()
+
+
 async def handle_step_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, user, text):
     if user.id not in ADMIN_IDS:
         return
@@ -456,7 +483,7 @@ async def handle_step_find_user(update: Update, context: ContextTypes.DEFAULT_TY
         f"نام: <b>{esc(fname)}</b>\n"
         f"یوزر: @{esc(uname)}\n"
         f"آیدی: <code>{uid}</code>\n"
-        f"رول: <b>{access.get_role_label(role)}</b>\n"
+        f"🎖  درجه: <b>{access.get_role_label(role)}</b>\n"
         f"امتیاز: <b>{pts}</b>\n"
         f"وضعیت: {status}"
         f"{admin_line}",

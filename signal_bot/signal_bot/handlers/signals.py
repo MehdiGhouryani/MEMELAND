@@ -106,7 +106,7 @@ async def _check_daily_limit(user):
     role  = users_repo.get_role(user.id)
     limit = access.get_daily_limit(role)
     if signals_repo.daily_signal_count(user.id) >= limit:
-        return False, f"⛔️ سقف روزانه رول شما ({access.get_role_label(role)}): {limit} سیگنال!"
+        return False, f"⛔️ سقف روزانه درجه‌ی شما ({access.get_role_label(role)}): {limit} سیگنال!"
     return True, ""
 
 
@@ -139,11 +139,23 @@ async def signals_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── منوی ثبت سیگنال: انتخاب نوع (بند ۴) ────────────────
     elif data == "menu_signal":
+        role       = users_repo.get_role(user.id)
+        limit      = access.get_daily_limit(role)
+        used_today = signals_repo.daily_signal_count(user.id)
+        remaining  = max(0, limit - used_today)
+        publish_note = (
+            "بدون نیاز به تأیید — مستقیم منتشر می‌شه ✅" if access.is_auto_publish_role(role)
+            else "قبل از انتشار باید Admin/VIP Helper تأییدش کنه ⏳"
+        )
         await q.edit_message_text(
             f"<b>📡  ثبت سیگنال جدید</b>\n{SEP}\n\n"
             f"📸  <b>Full Signal</b> — عکس تحلیلت رو بفرست، یا اگه عکس نداری متنی بنویس\n"
             f"⚡  <b>Fast Call</b> — معرفی سریع یه کوین/توکن (بدون Entry/TP)\n\n"
-            f"💡  توی گروه هم می‌تونی مستقیم با دستور /fastcall یا /fullsignal ثبت کنی.\n{SEP}",
+            f"💡  توی گروه هم می‌تونی مستقیم با دستور /fastcall یا /fullsignal ثبت کنی.\n"
+            f"{SEP}\n"
+            f"🎖  درجه‌ت: <b>{access.get_role_label(role)}</b>  —  {publish_note}\n"
+            f"📊  سقف امروز: <b>{used_today}/{limit}</b> استفاده‌شده  ({remaining} باقی‌مونده)\n"
+            f"{SEP}",
             reply_markup=signal_menu_kb(), parse_mode=ParseMode.HTML
         )
 
@@ -446,7 +458,7 @@ async def _submit_signal(q_or_msg, context, user, signal_type: str):
             f"✅  <b>سیگنال #{signal_id} ثبت و منتشر شد!</b>\n{SEP}\n\n"
             f"{type_label}  <b>{esc(d.get('coin')) or '—'}</b>{dir_part}\n"
             f"{SEP}\n\n"
-            f"🚀  رول شما ({esc(access.get_role_label(role))}) نیاز به تأیید ادمین نداره — "
+            f"🚀  درجه‌ی شما ({esc(access.get_role_label(role))}) نیاز به تأیید ادمین نداره — "
             f"مستقیم توی فید عمومی و لیدربورد قرار گرفت."
         )
     else:
