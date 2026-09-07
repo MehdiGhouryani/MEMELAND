@@ -152,7 +152,7 @@ const Modals = {
       return;
     }
 
-    // استفاده مستقیم از آبجکت API برای تضمین ارسال هدر معتبر Authorization
+    const initData = window.Telegram?.WebApp?.initData || '';
     const headers = (window.API && typeof API.getHeaders === 'function') 
       ? API.getHeaders() 
       : {
@@ -164,7 +164,12 @@ const Modals = {
       const resp = await fetch('/site/content/articles', {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({ title, body, image })
+        body: JSON.stringify({
+          title: title,
+          body: body,
+          image: image,
+          init_data: initData
+        })
       });
 
       if (!resp.ok) {
@@ -186,6 +191,7 @@ const Modals = {
     }
   },
 
+  
   async deleteArticleAction(articleId) {
     if (window.TGBridge) {
       const conf = await TGBridge.showConfirm('آیا از حذف این مقاله مطمئن هستید؟');

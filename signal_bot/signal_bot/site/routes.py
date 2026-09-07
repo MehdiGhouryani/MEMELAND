@@ -361,12 +361,8 @@ async def handle_content_get(request: web.Request) -> web.Response:
     value = kv.kv_get(key)
     return web.json_response(json.loads(value) if value else [])
 
-
 async def handle_content_post(request: web.Request) -> web.Response:
-    """ثبت مقاله یا ستاپ جدید در آکادمی توسط ادمین"""
-    if not _require_admin(request):
-        return _json_error(403, "دسترسی فقط برای ادمین")
-
+    """ثبت مقاله یا ستاپ جدید در آکادمی با اعتبارسنجی منعطف ادمین"""
     key = request.match_info["key"]
     if key not in _ALLOWED_CONTENT_KEYS:
         return _json_error(404, "کلید نامعتبر است")
@@ -375,6 +371,22 @@ async def handle_content_post(request: web.Request) -> web.Response:
         body = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
         return _json_error(400, "داده ارسالی نامعتبر است")
+
+    # ۱. بررسی نشست از هدر Authorization
+    session = _require_admin(request)
+
+    # ۲. فال‌بک: اعتبارسنجی مستقیم با init_data در صورت خالی بودن توکن
+    if not session:
+        from signal_bot.config import settings
+        init_data = body.get("init_data")
+        if init_data:
+            auth_res = auth.authenticate_webapp(init_data, settings.TOKEN)
+            if auth_res and auth_res.get("is_admin"):
+                session = auth_res
+
+    # ۳. بررسی وضعیت نهایی دسترسی
+    if not session or not session.get("is_admin"):
+        return _json_error(403, "دسترسی فقط برای ادمین")
 
     title = str(body.get("title", "")).strip()
     text = str(body.get("body", "") or body.get("desc", "")).strip()
@@ -395,13 +407,13 @@ async def handle_content_post(request: web.Request) -> web.Response:
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
     }
 
-    # قرار دادن مقاله جدید در ابتدای لیست
     items.insert(0, new_item)
     kv.kv_set(key, json.dumps(items, ensure_ascii=False))
-    logger.info(f"ContentAdd: key={key} id={new_item['id']} title='{title[:25]}'")
+    logger.info(f"ContentAdd: key={key} id={new_item['id']} title='{title[:25]}' by={session.get('telegram_id')}")
 
     return web.json_response({"ok": True, "item": new_item})
 
+    
 
 async def handle_content_delete(request: web.Request) -> web.Response:
     """حذف مقاله یا ستاپ آموزشی با شناسه عددی"""
