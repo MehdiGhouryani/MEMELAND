@@ -50,6 +50,7 @@
   background: var(--role-gradient, linear-gradient(135deg, #3f3f46, #71717a));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   animation: rotateGlow 4s linear infinite;
   pointer-events: none;

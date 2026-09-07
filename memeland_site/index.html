@@ -12,9 +12,9 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- استایل‌های اصلی، تم نئونی نقش‌ها و رفرش کشویی -->
-  <link rel="stylesheet" href="/static/css/style.css?v=5.8.0">
-  <link rel="stylesheet" href="/static/css/roles.css?v=5.8.0">
-  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=5.8.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=6.2.0">
+  <link rel="stylesheet" href="/static/css/roles.css?v=6.2.0">
+  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=6.2.0">
 </head>
 <body>
 
@@ -201,14 +201,31 @@
     </div>
   </div>
 
-  <!-- بارگذاری ترتیبی اسکریپت‌های ماژولار -->
-  <script src="/static/js/telegram.js?v=5.8.0"></script>
-  <script src="/static/js/api.js?v=5.8.0"></script>
-  <script src="/static/js/avatars.js?v=5.8.0"></script>
-  <script src="/static/js/pull_refresh.js?v=5.8.0"></script>
-  <script src="/static/js/dossier.js?v=5.8.0"></script>
-  <script src="/static/js/views.js?v=5.8.0"></script>
-  <script src="/static/js/modals.js?v=5.8.0"></script>
-  <script src="/static/js/app.js?v=5.8.0"></script>
+  <!-- لاگر زنده برای بررسی اجرای بدون اشکال تمام اسکریپت‌ها -->
+  <script>
+    window.sendRemoteLog = function(msg) {
+      try {
+        fetch('/site/client-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ msg: msg })
+        }).catch(function(){});
+      } catch(e){}
+    };
+    window.onerror = function(msg, url, line) {
+      var file = (url || '').split('/').pop();
+      window.sendRemoteLog('JSERR: ' + msg + ' @ ' + file + ':' + line);
+    };
+  </script>
+
+  <!-- بارگذاری ترتیبی اسکریپت‌های ماژولار با نسخه 6.2.0 -->
+  <script src="/static/js/telegram.js?v=6.2.0"></script>
+  <script src="/static/js/api.js?v=6.2.0"></script>
+  <script src="/static/js/avatars.js?v=6.2.0"></script>
+  <script src="/static/js/pull_refresh.js?v=6.2.0"></script>
+  <script src="/static/js/dossier.js?v=6.2.0"></script>
+  <script src="/static/js/views.js?v=6.2.0"></script>
+  <script src="/static/js/modals.js?v=6.2.0"></script>
+  <script src="/static/js/app.js?v=6.2.0"></script>
 </body>
 </html>

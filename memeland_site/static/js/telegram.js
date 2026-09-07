@@ -1,27 +1,30 @@
 /**
- * Telegram WebApp Native Integration Bridge
- * نسخه اصلاح‌شده با Getter پویا، فال‌بک کلیپ‌بورد و مهار کامل دکمه بازگشت
+ * Telegram WebApp Native Integration Bridge (v6.2.0)
  */
 
 const TGBridge = {
-  // دسترسی پویا به SDK حتی در صورت تاخیر در بارگذاری اولیه
   get tg() {
     return window.Telegram?.WebApp || null;
   },
 
   init() {
     const tg = this.tg;
-    if (!tg) return;
+    if (!tg) {
+      if (window.sendRemoteLog) window.sendRemoteLog('TG_BRIDGE: Telegram SDK Not Found');
+      return;
+    }
 
     tg.ready();
     tg.expand();
 
-    // مهار بسته‌شدن برنامه حین اسکرول عمودی (Bot API 7.7+)
+    // مهار بسته شدن پنجره با سوایپ عمودی (Bot API 7.7+)
     if (tg.disableVerticalSwipes) {
-      try { tg.disableVerticalSwipes(); } catch (e) {}
+      try { 
+        tg.disableVerticalSwipes();
+        if (window.sendRemoteLog) window.sendRemoteLog('TG_SWIPE: Disabled');
+      } catch (e) {}
     }
 
-    // هماهنگ‌سازی رنگ هدر و پس‌زمینه
     if (tg.setHeaderColor) {
       try { tg.setHeaderColor('#07090e'); } catch (e) {}
     }
@@ -29,22 +32,26 @@ const TGBridge = {
       try { tg.setBackgroundColor('#07090e'); } catch (e) {}
     }
 
-    // مدیریت جامع دکمه بازگشت تلگرام (مودال ⟵ باتم‌شیت ⟵ تب‌ها)
+    // مدیریت جامع دکمه بازگشت با معماری ماژولار جدید
     if (tg.BackButton) {
       tg.BackButton.onClick(() => {
         const modal = document.getElementById('modalOverlay');
         if (modal && modal.classList.contains('show')) {
-          App.closeModal();
+          if (window.Modals && typeof Modals.closeModal === 'function') {
+            Modals.closeModal();
+          }
           return;
         }
 
         const sheet = document.getElementById('bottomSheet');
         if (sheet && sheet.classList.contains('show')) {
-          App.closeBottomSheet();
+          if (window.Views && typeof Views.closeBottomSheet === 'function') {
+            Views.closeBottomSheet();
+          }
           return;
         }
 
-        if (App.state && App.state.currentTab !== 'signals') {
+        if (window.App && App.state && App.state.currentTab !== 'signals') {
           App.switchTab('signals');
         }
       });
@@ -98,7 +105,6 @@ const TGBridge = {
   copyText(text, successMsg = 'کپی شد!') {
     if (!text) return;
     
-    // روش استاندارد با فال‌بک متنی برای مرورگرهای قدیمی وب‌ویو
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text)
         .then(() => {
