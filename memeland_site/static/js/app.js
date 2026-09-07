@@ -1,37 +1,31 @@
 /**
- * MemeLand App Controller
- * نسخه نهایی و پایدار (TMA Standard)
- * - احراز هویت سایلنت و بدون نقص تلگرام
- * - تفکیک دسترسی ادمین منحصراً بر اساس ADMIN_IDS
- * - کارت‌های اتمیک ترید، باتم‌شیت و رفع کامل باگ‌های ناوبری
+ * MemeLand App Controller (Production TMA)
  */
 
 const App = {
   state: {
     currentTab: 'signals',
-    signalSubTab: 'active',      // 'active' | 'closed'
-    category: 'all',             // 'all' | 'dex' | 'alt' | 'stock' | 'irbourse'
+    signalSubTab: 'active',
+    category: 'all',
     searchQuery: '',
     session: null,
     signals: [],
-    leaderboardType: 'callers',  // 'callers' | 'signal_givers'
+    leaderboardType: 'callers',
     leaderboardData: { callers: [], signal_givers: [] },
-    academyTab: 'strategies',    // 'strategies' | 'articles'
+    academyTab: 'strategies',
     strategies: [],
     articles: []
   },
 
   async init() {
     TGBridge.init();
-
-    // تغییر متن‌های لودینگ قورباغه برای جذابیت بصری
     this.startSplashTicker();
 
-    // سوپاپ اطمینان: اسپلش در بدترین حالت شبکه نهایتاً بعد از ۳.۵ ثانیه محو می‌شود
-    const safetyTimeout = setTimeout(() => this.hideSplash(), 3500);
+    // سوپاپ اطمینان خروج از اسپلش (حداکثر ۳.۵ ثانیه)
+    const safetyTimer = setTimeout(() => this.hideSplash(), 3500);
 
     try {
-      // ۱. احراز هویت سایلنت در پس‌زمینه
+      // ۱. احراز هویت سایلنت تلگرام
       let session = await API.authenticateWebApp();
       if (!session) {
         session = await API.getSession();
@@ -41,14 +35,14 @@ const App = {
       // ۲. بارگذاری اولیه فید سیگنال‌ها
       await this.loadSignals();
 
-      // ۳. همگام‌سازی رابط کاربری با مشخصات تلگرام
+      // ۳. به‌روزرسانی رابط کاربری با هویت موثق تلگرام
       this.updateUserInterface();
       this.renderCurrentView();
     } catch (err) {
-      console.warn('Init fallback:', err);
+      console.warn('Init error:', err);
     } finally {
-      clearTimeout(safetyTimeout);
-      setTimeout(() => this.hideSplash(), 400);
+      clearTimeout(safetyTimer);
+      setTimeout(() => this.hideSplash(), 350);
     }
   },
 
@@ -61,11 +55,11 @@ const App = {
       'همگام‌سازی سیگنال‌های VIP...',
       'آماده‌سازی تیکرهای زنده...'
     ];
-    let i = 0;
+    let idx = 0;
     this._splashInterval = setInterval(() => {
-      i = (i + 1) % steps.length;
-      statusEl.textContent = steps[i];
-    }, 800);
+      idx = (idx + 1) % steps.length;
+      statusEl.textContent = steps[idx];
+    }, 750);
   },
 
   hideSplash() {
@@ -85,40 +79,58 @@ const App = {
     const adminSec = document.getElementById('adminPanelSection');
     const adminFab = document.getElementById('adminFabBtn');
 
-    // استخراج سازگار با هر دو ساختار /webapp-auth و /site/session
-    const tid = s ? (s.telegram_id || (s.user && s.user.id)) : null;
-    const displayName = s ? (s.display_name || (s.user && s.user.first_name) || s.first_name || 'کاربر تلگرام') : null;
-    const username = s ? (s.username || (s.user && s.user.username)) : null;
-    const isAdmin = s && s.role === 'admin';
+    // استخراج کاملاً منعطف شناسه عددی تلگرام
+    const tid = s ? (s.telegram_id || (s.user && s.user.id) || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id)) : null;
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
-    if (s && tid) {
-      headerName.textContent = displayName;
-      profileName.textContent = displayName;
-      profileUser.textContent = username ? `@${username}` : '—';
-      profileId.textContent = tid;
+    const displayName = (s && s.display_name) ||
+                        (s && s.user && s.user.first_name) ||
+                        (s && s.first_name) ||
+                        (tgUser && tgUser.first_name) ||
+                        'کاربر تلگرام';
+
+    const username = (s && s.username) ||
+                     (s && s.user && s.user.username) ||
+                     (tgUser && tgUser.username) ||
+                     null;
+
+    const isAdmin = Boolean(s && (s.role === 'admin' || s.is_admin === true));
+
+    if (s && (tid || s.token)) {
+      if (headerName) headerName.textContent = displayName;
+      if (profileName) profileName.textContent = displayName;
+      if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
+      if (profileId) profileId.textContent = tid ? String(tid) : '—';
 
       if (isAdmin) {
-        headerAdmin.style.display = 'inline-block';
-        profileRole.textContent = '👑 ادمین ارشد (ADMIN_IDS)';
-        profileRole.style.color = 'var(--gold)';
-        adminSec.style.display = 'block';
-        adminFab.style.display = 'flex';
+        if (headerAdmin) headerAdmin.style.display = 'inline-block';
+        if (profileRole) {
+          profileRole.textContent = '👑 ادمین ارشد (ADMIN_IDS)';
+          profileRole.style.color = 'var(--gold)';
+        }
+        if (adminSec) adminSec.style.display = 'block';
+        if (adminFab) adminFab.style.display = 'flex';
       } else {
-        headerAdmin.style.display = 'none';
-        profileRole.textContent = 'عضو رسمی';
-        profileRole.style.color = 'var(--teal)';
-        adminSec.style.display = 'none';
-        adminFab.style.display = 'none';
+        if (headerAdmin) headerAdmin.style.display = 'none';
+        if (profileRole) {
+          profileRole.textContent = 'عضو رسمی';
+          profileRole.style.color = 'var(--teal)';
+        }
+        if (adminSec) adminSec.style.display = 'none';
+        if (adminFab) adminFab.style.display = 'none';
       }
     } else {
-      headerName.textContent = 'مهمان';
-      profileName.textContent = 'کاربر مهمان';
-      profileUser.textContent = 'بدون نشست تلگرام';
-      profileId.textContent = '—';
-      profileRole.textContent = 'فقط خواندنی';
-      headerAdmin.style.display = 'none';
-      adminSec.style.display = 'none';
-      adminFab.style.display = 'none';
+      if (headerName) headerName.textContent = 'مهمان';
+      if (profileName) profileName.textContent = 'کاربر مهمان';
+      if (profileUser) profileUser.textContent = 'بدون نشست تلگرام';
+      if (profileId) profileId.textContent = '—';
+      if (profileRole) {
+        profileRole.textContent = 'فقط خواندنی';
+        profileRole.style.color = 'var(--text-muted)';
+      }
+      if (headerAdmin) headerAdmin.style.display = 'none';
+      if (adminSec) adminSec.style.display = 'none';
+      if (adminFab) adminFab.style.display = 'none';
     }
   },
 
@@ -232,7 +244,7 @@ const App = {
     const s = this.state.signals.find(item => item.id === signalId);
     if (!s) return;
 
-    const isAdmin = this.state.session && this.state.session.role === 'admin';
+    const isAdmin = Boolean(this.state.session && (this.state.session.role === 'admin' || this.state.session.is_admin === true));
     const body = document.getElementById('sheetContent');
 
     body.innerHTML = `
@@ -269,7 +281,6 @@ const App = {
     TGBridge.syncBackButton(this.state.currentTab !== 'signals');
   },
 
-  // ================= مدیریت لیدربورد =================
   setLeaderboardType(type) {
     TGBridge.haptic('selection');
     this.state.leaderboardType = type;
@@ -328,7 +339,6 @@ const App = {
     }
   },
 
-  // ================= مدیریت آکادمی و استراتژی‌ها =================
   setAcademySubTab(subTab) {
     TGBridge.haptic('selection');
     this.state.academyTab = subTab;
@@ -377,7 +387,6 @@ const App = {
     }
   },
 
-  // ================= مدیریت فرم‌های ادمین =================
   openAddSignalModal() {
     TGBridge.haptic('selection');
     document.getElementById('modalTitle').textContent = 'ثبت سیگنال جدید';
@@ -429,7 +438,7 @@ const App = {
     const s = this.state.signals.find(item => item.id === signalId);
     if (!s) return;
 
-    document.getElementById('modalTitle').textContent = `نتیجه برای ${s.coin}`;
+    document.getElementById('modalTitle').textContent = `نتیجه برای ${s.coin || ''}`;
     document.getElementById('modalBody').innerHTML = `
       <div class="field">
         <label>درصد سود یا متن نتیجه:</label>

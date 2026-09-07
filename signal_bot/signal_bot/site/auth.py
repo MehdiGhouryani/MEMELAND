@@ -1,9 +1,5 @@
 """
-ماژول احراز هویت و مدیریت نشست‌ها در وب‌سرور
-
-- تشخیص ادمین منحصراً از طریق مقایسه telegram_id با ADMIN_IDS در .env انجام می‌شود.
-- نام کاربر مستقیماً از هویت تلگرام استخراج شده و غیرقابل جعل یا تغییر دستی است.
-- ورود برای کاربران داخل تلگرام کاملاً سایلنت و بدون نیاز به پین‌کد است.
+ماژول احراز هویت و مدیریت نشست‌ها در وب‌سرور Memeland
 """
 
 import hashlib
@@ -27,14 +23,19 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _is_admin(telegram_id: int) -> bool:
-    """بررسی عضویت شناسه کاربری در لیست ADMIN_IDS فایل .env"""
-    admin_ids = getattr(settings, "ADMIN_IDS", [])
-    return telegram_id in admin_ids
+def _is_admin(telegram_id: Any) -> bool:
+    """بررسی قطعی عضویت شناسه در ADMIN_IDS فایل .env با تبدیل صریح به int"""
+    if telegram_id is None:
+        return False
+    try:
+        tid = int(telegram_id)
+        admin_ids = [int(x) for x in getattr(settings, "ADMIN_IDS", [])]
+        return tid in admin_ids
+    except (ValueError, TypeError):
+        return False
 
 
 def _extract_display_name(first_name: Optional[str], username: Optional[str], telegram_id: int) -> str:
-    """استخراج نام کاربری موثق از تلگرام"""
     if first_name and first_name.strip():
         return first_name.strip()[:64]
     if username and username.strip():
@@ -43,12 +44,6 @@ def _extract_display_name(first_name: Optional[str], username: Optional[str], te
 
 
 def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 86400) -> Optional[Dict[str, Any]]:
-    """
-    احراز هویت سایلنت مینی‌اپ تلگرام:
-    ۱. اعتبارسنجی ریاضی امضای initData با bot_token
-    ۲. تشخیص آنی سطح دسترسی ادمین بر اساس .env
-    ۳. صدور نشست پایدار با نام رسمی تلگرام
-    """
     payload = verify_webapp_data(init_data, bot_token, max_age_seconds=max_age_seconds)
     if not payload or not payload.get("user"):
         return None
@@ -59,11 +54,11 @@ def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 8
     first_name = user.get("first_name")
     photo_url = user.get("photo_url")
 
-    # تشخیص خودکار نقش بر اساس ADMIN_IDS
-    role = "admin" if _is_admin(telegram_id) else "member"
+    # تخصیص نقش ادمین منحصراً بر اساس تنظیمات .env
+    is_adm = _is_admin(telegram_id)
+    role = "admin" if is_adm else "member"
     display_name = _extract_display_name(first_name, username, telegram_id)
 
-    # بروزرسانی پروفایل در دیتابیس با اطلاعات قطعی تلگرام
     _upsert_profile(telegram_id, display_name=display_name, role=role)
 
     token = create_session(
@@ -74,17 +69,23 @@ def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 8
         role=role,
     )
 
+    logger.info("WebApp Auth OK: ID=%s | Role=%s | is_admin=%s", telegram_id, role, is_adm)
+
+    # بازگرداندن ساختار داده تخت و تودرتو هم‌زمان جهت سازگاری کامل فرانت‌اند
     return {
         "token": token,
         "user": user,
-        "role": role,
+        "telegram_id": telegram_id,
+        "username": username,
+        "first_name": first_name,
         "display_name": display_name,
+        "role": role,
+        "is_admin": is_adm,
         "start_param": payload.get("start_param"),
     }
 
 
 def verify_login_widget_payload(payload: dict, bot_token: str, max_age_seconds: int = 86400) -> Optional[Dict[str, Any]]:
-    """تأیید داده‌های Login Widget وب‌سایت در صورت نیاز به اجرای خارج از مینی‌اپ"""
     if not payload or not bot_token:
         return None
 
@@ -122,7 +123,6 @@ def create_session(
     photo_url: Optional[str] = None,
     role: Optional[str] = None,
 ) -> str:
-    """ایجاد نشست جدید و ذخیره نقش و نام تلگرام"""
     telegram_id = int(telegram_id)
     token = secrets.token_hex(32)
     now = _utcnow()
@@ -155,7 +155,6 @@ def create_session(
 
 
 def get_session(token: str) -> Optional[Dict[str, Any]]:
-    """بازیابی نشست جاری و بررسی اعتبار زمانی"""
     if not token or not isinstance(token, str):
         return None
 
@@ -184,19 +183,20 @@ def get_session(token: str) -> Optional[Dict[str, Any]]:
     if _utcnow() > expires_at:
         return None
 
-    # بروزرسانی داینامیک وضعیت ادمین در صورت تغییر ADMIN_IDS در .env
     actual_role = "admin" if _is_admin(telegram_id) else role
+    prof = get_profile(telegram_id)
 
     return {
         "telegram_id": int(telegram_id),
         "username": username,
         "first_name": first_name,
+        "display_name": prof.get("display_name") or first_name or username or f"User_{telegram_id}",
         "role": actual_role,
+        "is_admin": actual_role == "admin",
     }
 
 
 def get_profile(telegram_id: int) -> Dict[str, Optional[str]]:
-    """دریافت نام و نقش پایدار کاربر"""
     telegram_id = int(telegram_id)
     conn = get_db()
     try:
@@ -206,22 +206,17 @@ def get_profile(telegram_id: int) -> Dict[str, Optional[str]]:
     finally:
         conn.close()
 
+    actual_role = "admin" if _is_admin(telegram_id) else "member"
     if not row:
-        return {
-            "display_name": None,
-            "role": "admin" if _is_admin(telegram_id) else "member",
-        }
-    return {
-        "display_name": row[0],
-        "role": "admin" if _is_admin(telegram_id) else row[1],
-    }
+        return {"display_name": None, "role": actual_role}
+    return {"display_name": row[0], "role": actual_role}
 
 
 def _upsert_profile(telegram_id: int, display_name: Optional[str] = None, role: Optional[str] = None):
     telegram_id = int(telegram_id)
     current = get_profile(telegram_id)
     new_name = current["display_name"] if display_name is None else display_name
-    new_role = current["role"] if role is None else role
+    new_role = "admin" if _is_admin(telegram_id) else (role or current["role"] or "member")
 
     conn = get_db()
     try:
@@ -239,21 +234,17 @@ def _upsert_profile(telegram_id: int, display_name: Optional[str] = None, role: 
 
 
 def set_display_name(telegram_id: int, display_name: str) -> Optional[str]:
-    """قفل شده: نام فقط از طریق تلگرام ست می‌شود و ورودی دستی نمی‌پذیرد"""
     prof = get_profile(telegram_id)
     return prof.get("display_name")
 
 
 def verify_pin(*args, **kwargs) -> bool:
-    """سیستم پین منسوخ شده است"""
     return False
 
 
 def claim_role(*args, **kwargs) -> bool:
-    """سیستم پین منسوخ شده است"""
     return False
 
 
 def bootstrap_pins_from_env():
-    """سازگاری با راه‌اندازی‌های قبلی"""
     pass
