@@ -2,19 +2,14 @@
 مسیرهای HTTP وب‌سرور ربات روی اپلیکیشن aiohttp
 """
 
-import base64
 import json
-import logging
 import os
-import uuid
 from datetime import datetime, timedelta
 
 from aiohttp import web
 
-from signal_bot.services import image_upload
+from signal_bot.logger import logger
 from signal_bot.site import auth, kv, ratings, signals, traders
-
-logger = logging.getLogger(__name__)
 
 _SITE_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "memeland_site")
@@ -110,6 +105,7 @@ async def handle_session(request: web.Request) -> web.Response:
     session = auth.get_session(token)
     if not session:
         return _json_error(401, "نشست نامعتبر است یا منقضی شده")
+    logger.info(f"SessCheck: uid={session['telegram_id']} adm={session['is_admin']}")
     return web.json_response(session)
 
 
@@ -201,6 +197,7 @@ async def handle_signals_create(request: web.Request) -> web.Response:
 
     try:
         sid = signals.create_signal(**payload)
+        logger.info(f"SigNew: sid={sid} coin={payload.get('coin')} by={payload['owner_telegram_id']}")
     except TypeError as e:
         return _json_error(400, str(e))
 
@@ -215,10 +212,12 @@ async def handle_signals_edit(request: web.Request) -> web.Response:
     try:
         body = await request.json()
         ok = signals.edit_signal(signal_id, **body)
+        logger.info(f"SigEdit: sid={signal_id}")
     except (ValueError, json.JSONDecodeError) as e:
         return _json_error(400, str(e))
 
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")
+
 
 async def handle_trader_dossier(request: web.Request) -> web.Response:
     try:
@@ -226,11 +225,14 @@ async def handle_trader_dossier(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         return _json_error(400, "شناسه تریدر نامعتبر است")
 
+    logger.info(f"DossierReq: target_uid={trader_id}")
     dossier = traders.get_trader_dossier(trader_id)
     if not dossier:
         return _json_error(404, "پرونده تریدر یافت نشد")
 
     return web.json_response(dossier)
+
+
 async def handle_signals_result(request: web.Request) -> web.Response:
     signal_id = int(request.match_info["id"])
     if not _require_owner_or_admin(request, signal_id):
@@ -238,7 +240,10 @@ async def handle_signals_result(request: web.Request) -> web.Response:
 
     try:
         body = await request.json()
-        ok = signals.set_result(signal_id, body.get("result", ""), body.get("outcome_status", "open"))
+        result_text = body.get("result", "")
+        status = body.get("outcome_status", "open")
+        ok = signals.set_result(signal_id, result_text, status)
+        logger.info(f"SigResult: sid={signal_id} res={result_text} stat={status}")
     except (json.JSONDecodeError, ValueError) as e:
         return _json_error(400, str(e))
 
@@ -251,6 +256,7 @@ async def handle_signals_delete(request: web.Request) -> web.Response:
 
     signal_id = int(request.match_info["id"])
     ok = signals.delete_signal(signal_id)
+    logger.info(f"SigDel: sid={signal_id}")
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")
 
 
@@ -296,17 +302,13 @@ def register(app: web.Application):
     if os.path.exists(_STATIC_DIR):
         app.router.add_static("/static/", _STATIC_DIR, name="static")
 
-    # روت‌های احراز هویت WebApp
     app.router.add_post("/webapp-auth", handle_webapp_auth)
     app.router.add_post("/site/webapp-auth", handle_webapp_auth)
     app.router.add_get("/site/session", handle_session)
     app.router.add_get("/site/traders/{user_id}", handle_trader_dossier)
-    # روت‌های مدیریت ادمین و کادر (Staff Management)
     app.router.add_get("/site/staff", handle_staff_list)
     app.router.add_post("/site/staff", handle_staff_add)
     app.router.add_delete("/site/staff/{user_id}", handle_staff_delete)
-
-    # روت‌های سیگنال و آمار
     app.router.add_get("/site/signals", handle_signals_get)
     app.router.add_post("/site/signals", handle_signals_create)
     app.router.add_patch("/site/signals/{id}", handle_signals_edit)
@@ -314,6 +316,3 @@ def register(app: web.Application):
     app.router.add_delete("/site/signals/{id}", handle_signals_delete)
     app.router.add_get("/site/leaderboard", handle_leaderboard)
     app.router.add_get("/site/content/{key}", handle_content_get)
-
-
-

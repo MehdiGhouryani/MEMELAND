@@ -92,14 +92,23 @@ const App = {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const displayName = s?.display_name || s?.user?.first_name || s?.first_name || tgUser?.first_name || 'کاربر تلگرام';
     const username = s?.username || s?.user?.username || tgUser?.username || null;
-    const isAdmin = Boolean(s && (s.role === 'admin' || s.is_admin === true));
     const quota = s?.quota || null;
 
-    let roleKey = 'rookie';
-    if (isAdmin) roleKey = quota?.is_super_admin ? 'super_admin' : 'admin';
-    else if (quota?.role_key) roleKey = quota.role_key;
-    else if (s?.role === 'admin') roleKey = 'admin';
+    // تشخیص قاطع وضعیت ادمین از روی سشن یا دیتابیس
+    const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
+    const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
+    // انتخاب تم آواتار: اولویت قطعی با سوپرادمین و ادمین
+    let roleKey = 'rookie';
+    if (isSuper) {
+      roleKey = 'super_admin';
+    } else if (isAdmin) {
+      roleKey = 'admin';
+    } else if (quota?.role_key && quota.role_key !== 'rookie') {
+      roleKey = quota.role_key;
+    }
+
+    // رندر SVG و بج نئونی
     if (avatarContainer && window.AvatarRenderer) {
       avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
     }
@@ -115,9 +124,10 @@ const App = {
       if (profileName) profileName.textContent = displayName;
       if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
       if (profileId) profileId.textContent = tid ? String(tid) : '—';
-      if (profileRole && quota) profileRole.textContent = quota.display_role || 'عضو رسمی';
-      if (profileQuota && quota) profileQuota.textContent = `${quota.signals_today || 0} از ${quota.daily_limit || 5} مصرف شده`;
+      if (profileRole) profileRole.textContent = quota?.display_role || (isAdmin ? '👑 مدیر ارشد' : 'عضو رسمی');
+      if (profileQuota) profileQuota.textContent = `${quota?.signals_today || 0} از ${quota?.daily_limit || (isAdmin ? 999 : 5)} مصرف شده`;
 
+      // نمایش قطعی پنل و دکمه‌های ادمین
       if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
       if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
       if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';

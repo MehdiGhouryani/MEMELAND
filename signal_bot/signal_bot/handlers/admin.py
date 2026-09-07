@@ -2,12 +2,6 @@
 دامنه ادمین: پنل مدیریت، بررسی سیگنال‌های در انتظار، ثبت نتیجه، آمار کلی،
 مدیریت کاربران (بلاک/امتیاز/رول/VIP Helper)، پیام همگانی، خروجی اکسل،
 پایان دوره و تقسیم جایزه.
-
-پترن ثبت‌نام: ^(menu_admin|adm_.*|approve_.*|reject_.*|setresult_.*|block_.*|
-                unblock_.*|setpts_.*|setrole_.*|role_.*|vip_add_.*|vip_remove_.*)$
-
-⚠️ بررسی/تأیید/رد سیگنال (adm_pending, approve_, reject_) برای Admin و VIP Helper
-هر دو مجازه (بند ۵ نیازمندی‌ها)؛ بقیه‌ی این پنل فقط برای Admin (ADMIN_IDS) است.
 """
 import csv
 import io
@@ -27,6 +21,7 @@ from signal_bot.keyboards.keyboards import (
     admin_kb, back_main_kb, approve_reject_kb, signal_result_kb, user_manage_kb, role_picker_kb, btn
 )
 from signal_bot.handlers.common import guard_callback
+from signal_bot.logger import logger
 from signal_bot.utils import esc
 
 
@@ -36,9 +31,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     q, user, is_admin, is_vip_helper = guard
     data = q.data
-    can_review = is_admin or is_vip_helper  # بند ۵: Admin یا VIP Helper می‌تونن سیگنال تأیید/رد کنن
+    can_review = is_admin or is_vip_helper
 
-    # ── پنل ادمین ─────────────────────────────────────────
     if data == "menu_admin":
         if not is_admin:
             await q.answer("⛔️ دسترسی ندارید!", show_alert=True)
@@ -132,6 +126,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sid = int(data.split("_")[1])
         row = signals_repo.get_signal_owner(sid)
         signals_repo.set_signal_status(sid, "approved", reviewed_by=user.id)
+        logger.info(f"SigApprove: sid={sid} by={user.id}")
         await q.edit_message_text(f"✅  سیگنال #{sid} تأیید شد.")
         if row:
             uid, coin, direction, photo_file_id, signal_type, description, channel = row
@@ -162,6 +157,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sid = int(data.split("_")[1])
         row = signals_repo.get_signal_owner(sid)
         signals_repo.set_signal_status(sid, "rejected", reviewed_by=user.id)
+        logger.info(f"SigReject: sid={sid} by={user.id}")
         await q.edit_message_text(f"❌  سیگنال #{sid} رد شد.")
         if row:
             uid = row[0]
@@ -201,6 +197,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         uid, coin, direction = outcome["owner_id"], outcome["coin"], outcome["direction"]
         pts, new_pts = outcome["new_points"], outcome["new_total_points"]
+        logger.info(f"ResultApply: sid={sid} res={result} pts={pts} uid={uid}")
         await site_sync.push_signal_result(bot_signal_id=sid, result_key=result, points=pts)
         label = RESULT_LABEL.get(result, result)
         streak_msg = ""
@@ -211,7 +208,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"\n\n🔥  <b>استریک {current_streak}!</b>\n"
                 f"بونوس: +{outcome['bonus']} امتیاز اضافه شد 🎁"
             )
-        # اگه این آپدیت (نه اولین‌بار) بود، به‌جای امتیاز نتیجه، تفاوتِ اعمال‌شده رو نشون بده
         shown_pts  = pts if outcome["is_first_time"] else outcome["delta_points"]
         shown_sign = "+" if shown_pts >= 0 else ""
         update_note = "" if outcome["is_first_time"] else (
@@ -314,6 +310,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[1])
         users_repo.set_blocked(target_id, True)
+        logger.info(f"UserBlock: uid={target_id} by={user.id}")
         await q.edit_message_text(f"🔒  کاربر {target_id} بلاک شد.")
 
     elif data.startswith("unblock_"):
@@ -321,6 +318,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[1])
         users_repo.set_blocked(target_id, False)
+        logger.info(f"UserUnblock: uid={target_id} by={user.id}")
         await q.edit_message_text(f"🔓  کاربر {target_id} آنبلاک شد.")
 
     elif data.startswith("setpts_"):
@@ -348,13 +346,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("role_"):
         if not is_admin:
             return
-        # فرمت: role_<user_id>_<role_key>
         _, target_id_str, role_key = data.split("_", 2)
         target_id = int(target_id_str)
         if role_key not in ROLE_LABELS:
             await q.answer("درجه‌ی نامعتبر!", show_alert=True)
             return
         users_repo.set_role(target_id, role_key)
+        logger.info(f"RoleChange: uid={target_id} role={role_key} by={user.id}")
         await q.edit_message_text(f"✅  درجه‌ی کاربر {target_id} به «{ROLE_LABELS[role_key]}» تغییر کرد.")
         await safe_send_message(context.bot, chat_id=target_id,
             text=f"🎖  <b>درجه‌ی شما تغییر کرد!</b>\n\nدرجه‌ی جدید: <b>{ROLE_LABELS[role_key]}</b>",
@@ -365,6 +363,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[2])
         staff_repo.add_vip_helper(target_id, added_by=user.id)
+        logger.info(f"VipAdd: uid={target_id} by={user.id}")
         await q.edit_message_text(f"✅  کاربر {target_id} به VIP Helper ارتقا یافت.")
         await safe_send_message(context.bot, chat_id=target_id,
             text="💎  <b>تبریک!</b> شما به عنوان VIP Helper منصوب شدید و حالا می‌تونید سیگنال‌های در انتظار رو تأیید/رد کنید.",
@@ -375,6 +374,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[2])
         staff_repo.remove_vip_helper(target_id)
+        logger.info(f"VipDel: uid={target_id} by={user.id}")
         await q.edit_message_text(f"🔻  دسترسی VIP Helper کاربر {target_id} حذف شد.")
 
     elif data.startswith("grantreward_"):
@@ -398,6 +398,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                            show_alert=True)
             return
         name = prize_repo.create_next_season(days=14)
+        logger.info(f"SeasonNew: name={name} by={user.id}")
         await q.edit_message_text(f"✅  فصل جدید «{name}» شروع شد.", reply_markup=back_main_kb())
 
     elif data == "adm_export":
@@ -430,9 +431,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# ══════════════════════════════════════════════════════════
-#  مراحل ورودی متنی پنل ادمین (صدا زده می‌شه از handlers/text_router.py)
-# ══════════════════════════════════════════════════════════
 async def handle_step_set_solana_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE, user, text):
     if user.id not in ADMIN_IDS:
         return
@@ -440,9 +438,11 @@ async def handle_step_set_solana_wallet(update: Update, context: ContextTypes.DE
     text = text.strip()
     if text == "-":
         kv_delete("settings:solana_donate_wallet")
+        logger.info("SolanaWallet: removed")
         await update.message.reply_html("✅  آدرس ولت حذف شد — دکمه‌ی «واریز مستقیم» دیگه نشون داده نمی‌شه.")
     else:
         kv_set("settings:solana_donate_wallet", text)
+        logger.info(f"SolanaWallet: set {text[:6]}...{text[-4:]}")
         await update.message.reply_html(f"✅  آدرس ولت ذخیره شد:\n<code>{esc(text)}</code>")
     context.chat_data.clear()
 
@@ -459,6 +459,7 @@ async def handle_step_broadcast(update: Update, context: ContextTypes.DEFAULT_TY
         if ok:
             sent += 1
     prize_repo.insert_broadcast(user.id, text, sent)
+    logger.info(f"Broadcast: sent={sent}/{len(all_users)}")
     await update.message.reply_html(f"✅  پیام به <b>{sent}</b> کاربر ارسال شد.")
     context.chat_data.clear()
 
@@ -500,6 +501,7 @@ async def handle_step_set_pts(update: Update, context: ContextTypes.DEFAULT_TYPE
         pts = int(text)
         scoring.add_points_and_sync(target_id, pts)
         sign = "+" if pts >= 0 else ""
+        logger.info(f"PtsManual: uid={target_id} delta={sign}{pts}")
         await update.message.reply_html(f"✅  {sign}{pts} امتیاز به کاربر {target_id} اضافه شد.")
     except ValueError:
         await update.message.reply_text("⚠️  عدد وارد کن!")
@@ -542,6 +544,7 @@ async def handle_step_grant_reward(update: Update, context: ContextTypes.DEFAULT
         return
     reason = parts[1].strip() if len(parts) > 1 else ""
     rewards_repo.insert_reward(target_id, amount, reason, user.id)
+    logger.info(f"RewardGrant: uid={target_id} amt={amount}")
     await update.message.reply_html(f"✅  پاداش <b>{amount}</b> با دلیل «{esc(reason) or '—'}» برای کاربر {target_id} ثبت شد.")
     await safe_send_message(context.bot, chat_id=target_id,
         text=f"🎁  <b>پاداش جدید گرفتی!</b>\n{SEP}\n\n💰 {amount}\n📝 {esc(reason) or '—'}\n\nدست‌مریزاد! 🎉",
@@ -575,6 +578,7 @@ async def handle_step_endseason_confirm(update: Update, context: ContextTypes.DE
         if season_id:
             prize_repo.end_season(season_id)
         next_name = prize_repo.create_next_season(days=14)
+        logger.info(f"SeasonEnd: total={total} winners={len(top3)}")
         result_text += f"\n{SEP}\n🆕  فصل جدید «{next_name}» خودکار شروع شد."
         await update.message.reply_html(result_text)
         if CHANNEL_ID:
@@ -585,16 +589,6 @@ async def handle_step_endseason_confirm(update: Update, context: ContextTypes.DE
 
 
 async def cmd_markpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /markpaid USER_ID            — لیست پاداش‌های پرداخت‌نشده‌ی اون کاربر رو نشون می‌ده
-    /markpaid USER_ID REWARD_ID  — همون ردیف رو paid می‌کنه
-
-    ⚠️ rewards_repo.mark_paid() از اول همیشه تو کد بود ولی هیچ‌جا (نه دستور، نه
-    دکمه) صداش نمی‌زد — یعنی my_rewards_text() که آیکون ✅/📝 رو بر اساس status
-    نشون می‌ده، برای همیشه فقط 📝 می‌داد، حتی برای پاداش‌هایی که ادمین واقعاً
-    (دستی، بیرون از بات) پرداخت کرده بود. عمداً فقط ADMIN_IDS، نه VIP Helper —
-    چون این یه اقدام مالیه، نه بررسی سیگنال.
-    """
     user = update.effective_user
     if user.id not in ADMIN_IDS:
         return
@@ -619,6 +613,7 @@ async def cmd_markpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("این پاداش از قبل paid بود.")
             return
         rewards_repo.mark_paid(reward_id)
+        logger.info(f"PaidMark: rid={reward_id} uid={target_id}")
         await update.message.reply_text(
             f"✅  پاداش #{reward_id}  (💰{row[2]} — {esc(row[3]) or '—'})  الان paid شد.",
             parse_mode=ParseMode.HTML)

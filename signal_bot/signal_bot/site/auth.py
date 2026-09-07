@@ -4,17 +4,15 @@
 
 import hashlib
 import hmac
-import logging
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from signal_bot.config import settings
+from signal_bot.logger import logger
 from signal_bot.services.webapp_auth import verify_webapp_data
 from signal_bot.site.db import get_db
-
-logger = logging.getLogger(__name__)
 
 SESSION_TTL_DAYS = 30
 
@@ -24,7 +22,6 @@ def _utcnow() -> datetime:
 
 
 def _is_super_admin(telegram_id: Any) -> bool:
-    """بررسی عضویت قطعی شناسه در ADMIN_IDS فایل .env"""
     if telegram_id is None:
         return False
     try:
@@ -36,7 +33,6 @@ def _is_super_admin(telegram_id: Any) -> bool:
 
 
 def _is_staff_admin(telegram_id: int) -> bool:
-    """بررسی ادمین یا هلپر بودن در جدول staff دیتابیس ربات"""
     conn = get_db()
     try:
         c = conn.cursor()
@@ -46,14 +42,13 @@ def _is_staff_admin(telegram_id: int) -> bool:
         c.execute("SELECT role FROM staff WHERE user_id=? AND role IN ('admin', 'vip_helper')", (telegram_id,))
         return c.fetchone() is not None
     except Exception as e:
-        logger.warning("Staff table query failed: %s", e)
+        logger.warning(f"StaffChkErr: uid={telegram_id} err={e}")
         return False
     finally:
         conn.close()
 
 
 def _is_admin(telegram_id: Any) -> bool:
-    """تشخیص نهایی دسترسی ادمین (Super Admin یا Staff Admin)"""
     if telegram_id is None:
         return False
     try:
@@ -64,14 +59,12 @@ def _is_admin(telegram_id: Any) -> bool:
 
 
 def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
-    """استخراج رول ربات، برچسب رول، و سهمیه سیگنال ۲۴ ساعت اخیر"""
     telegram_id = int(telegram_id)
     role_key = getattr(settings, "DEFAULT_ROLE", "rookie")
     
     conn = get_db()
     try:
         c = conn.cursor()
-        # استخراج رول از جدول users در صورت وجود
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
         if c.fetchone():
             c.execute("SELECT role FROM users WHERE user_id=?", (telegram_id,))
@@ -79,7 +72,6 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
             if row and row[0]:
                 role_key = row[0]
 
-        # شمارش سیگنال‌های ثبت‌شده در ۲۴ ساعت گذشته
         since_24h = (_utcnow() - timedelta(hours=24)).isoformat()
         signals_count = 0
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='signals'")
@@ -90,7 +82,7 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
             )
             signals_count = c.fetchone()[0]
     except Exception as e:
-        logger.warning("Failed to fetch user quota: %s", e)
+        logger.warning(f"QuotaErr: uid={telegram_id} err={e}")
         signals_count = 0
     finally:
         conn.close()
@@ -123,7 +115,6 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
 
 
 def get_staff_list() -> List[Dict[str, Any]]:
-    """لیست اعضای کادر و ادمین‌های دیتابیس"""
     conn = get_db()
     staff_rows = []
     try:
@@ -144,7 +135,6 @@ def get_staff_list() -> List[Dict[str, Any]]:
 
 
 def add_or_update_staff(user_id: int, role: str) -> bool:
-    """ثبت یا ویرایش نقش کاربر در دیتابیس ربات"""
     user_id = int(user_id)
     conn = get_db()
     try:
@@ -161,29 +151,29 @@ def add_or_update_staff(user_id: int, role: str) -> bool:
             ON CONFLICT(user_id) DO UPDATE SET role=excluded.role
         """, (user_id, role, _utcnow().isoformat()))
 
-        # اگر نقش در جدول users هم قابل اعمال بود، بروزرسانی شود
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
         if c.fetchone():
             c.execute("UPDATE users SET role=? WHERE user_id=?", (role, user_id))
         conn.commit()
+        logger.info(f"StaffSet: uid={user_id} role={role}")
         return True
     except Exception as e:
-        logger.error("Error updating staff: %s", e)
+        logger.error(f"StaffSetErr: uid={user_id} err={e}")
         return False
     finally:
         conn.close()
 
 
 def remove_staff(user_id: int) -> bool:
-    """خلع دسترسی کاربر از کادر ادمین دیتابیس"""
     user_id = int(user_id)
     if _is_super_admin(user_id):
-        return False  # سوپرادمین .env حذف نمی‌شود
+        return False
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute("DELETE FROM staff WHERE user_id=?", (user_id,))
         conn.commit()
+        logger.info(f"StaffDel: uid={user_id}")
         return c.rowcount > 0
     finally:
         conn.close()
@@ -200,6 +190,7 @@ def _extract_display_name(first_name: Optional[str], username: Optional[str], te
 def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 86400) -> Optional[Dict[str, Any]]:
     payload = verify_webapp_data(init_data, bot_token, max_age_seconds=max_age_seconds)
     if not payload or not payload.get("user"):
+        logger.warning("AuthFail: TMA init_data invalid")
         return None
 
     user = payload["user"]
@@ -222,10 +213,7 @@ def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 8
         role=role,
     )
 
-    logger.info(
-        "WebApp Auth: ID=%s | Role=%s | is_admin=%s | UserRole=%s",
-        telegram_id, role, quota_info["is_admin"], quota_info["display_role"]
-    )
+    logger.info(f"AuthOK: uid={telegram_id} adm={quota_info['is_admin']} super={quota_info['is_super_admin']} role={quota_info['role_key']}")
 
     return {
         "token": token,
@@ -327,6 +315,7 @@ def get_session(token: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
     if not row:
+        logger.warning(f"SessNotFound: tok={token[:8]}...")
         return None
 
     telegram_id, username, first_name, role, expires_at_raw = row
@@ -338,6 +327,7 @@ def get_session(token: str) -> Optional[Dict[str, Any]]:
         return None
 
     if _utcnow() > expires_at:
+        logger.warning(f"SessExpired: uid={telegram_id}")
         return None
 
     quota_info = get_user_role_and_quota(telegram_id)
