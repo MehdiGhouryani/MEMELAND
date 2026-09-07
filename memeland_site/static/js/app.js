@@ -112,6 +112,7 @@ const App = {
     const quota = (s && s.quota) ? s.quota : null;
 
     // تشخیص کلید نقش جهت رندر آواتار
+    // تعیین کلید نقش
     let roleKey = 'rookie';
     if (isAdmin) {
       roleKey = (quota && quota.is_super_admin) ? 'super_admin' : 'admin';
@@ -119,7 +120,7 @@ const App = {
       roleKey = quota.role_key;
     }
 
-    // رندر گرافیک وکتوری و تم نئونی آواتار
+    // رندر قطعی SVG
     if (avatarContainer && window.AvatarRenderer) {
       avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
       if (avatarMiniBadge) avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);

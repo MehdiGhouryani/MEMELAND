@@ -5,8 +5,10 @@
 /* کانتینر اصلی آواتار پروفایل */
 .avatar-frame {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
+  min-width: 76px;
+  min-height: 76px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -16,11 +18,22 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
-.avatar-frame svg {
+/* پر کردن کامل فریم توسط کانتینر میانی و SVG وکتور */
+.avatar-frame #avatarSvgContainer {
   width: 100%;
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   overflow: hidden;
+}
+
+.avatar-frame svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  border-radius: 50%;
 }
 
 /* هاله نئونی گردان دور آواتار */
@@ -48,26 +61,29 @@
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 13px;
   background: #181b26;
   border: 2px solid #07090e;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 2;
 }
 
 /* ================= تم‌های نوری نقش‌ها ================= */
 
 /* ۱. پپه‌ی سلطنتی (Admin & Super Admin) */
-.theme-admin {
+.theme-admin,
+.theme-super_admin {
   --role-gradient: linear-gradient(135deg, #f59e0b, #fbbf24, #d97706);
   box-shadow: 0 0 24px rgba(245, 158, 11, 0.35);
 }
-.theme-admin .profile-role-title {
+.theme-admin .profile-role-title,
+.theme-super_admin .profile-role-title {
   color: #fbbf24 !important;
   text-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
 }
@@ -120,10 +136,12 @@
 }
 
 /* ۷. جوجه تازه‌کار (Rookie / Member) */
-.theme-rookie, .theme-member {
+.theme-rookie,
+.theme-member {
   --role-gradient: linear-gradient(135deg, #71717a, #a1a1aa, #52525b);
   box-shadow: 0 0 10px rgba(161, 161, 170, 0.15);
 }
-.theme-rookie .profile-role-title, .theme-member .profile-role-title {
+.theme-rookie .profile-role-title,
+.theme-member .profile-role-title {
   color: #a1a1aa !important;
 }
