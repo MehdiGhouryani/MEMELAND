@@ -1,0 +1,58 @@
+/* Pull-to-Refresh Container */
+.ptr-indicator {
+  position: relative;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.ptr-indicator.pulling {
+  transition: none;
+}
+
+.ptr-frog-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #11141d;
+  border: 1.5px solid var(--teal, #10b981);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+  transform: scale(0.6);
+  transition: transform 0.2s ease;
+}
+
+.ptr-indicator.active .ptr-frog-box {
+  transform: scale(1);
+}
+
+.ptr-frog-icon {
+  font-size: 22px;
+  display: inline-block;
+}
+
+.ptr-indicator.refreshing .ptr-frog-icon {
+  animation: frogSpin 0.7s infinite linear;
+}
+
+@keyframes frogSpin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.15); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.ptr-status-text {
+  font-size: 10px;
+  color: var(--text-muted, #71717a);
+  margin-top: 5px;
+  font-weight: 500;
+}

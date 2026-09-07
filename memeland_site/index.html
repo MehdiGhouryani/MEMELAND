@@ -5,20 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>MemeLand Hub</title>
   
-  <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   
-  <!-- فونت‌ها -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
-  <!-- استایل‌های نهایی با متغیر شکستن کش -->
-  <link rel="stylesheet" href="/static/css/style.css?v=4.2.0">
+  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=5.3.0">
+  <!-- استایل‌های اصلی و تم‌های نئونی آواتارها -->
+  <link rel="stylesheet" href="/static/css/style.css?v=5.1.0">
+  <link rel="stylesheet" href="/static/css/roles.css?v=5.1.0">
 </head>
 <body>
 
-  <!-- صفحه اسپلش انیمیشنی قورباغه -->
+  <!-- اسپلش لودینگ قورباغه -->
   <div id="splashScreen" class="splash-container">
     <div class="meme-frog-wrapper" onclick="TGBridge.haptic('light')">
       <div class="frog-halo-spinner"></div>
@@ -33,38 +32,26 @@
             <stop offset="100%" stop-color="#09090b" />
           </linearGradient>
         </defs>
-
         <ellipse class="frog-shadow" cx="60" cy="112" rx="34" ry="5" fill="rgba(0,0,0,0.35)" />
-
         <g class="frog-head-group">
           <circle cx="36" cy="38" r="19" fill="url(#frogSkin)" />
           <circle cx="84" cy="38" r="19" fill="url(#frogSkin)" />
-
           <circle cx="36" cy="38" r="14" fill="#ffffff" />
           <circle cx="84" cy="38" r="14" fill="#ffffff" />
-
           <g class="frog-pupils">
             <circle cx="37" cy="38" r="7.5" fill="#09090b" />
             <circle cx="34" cy="35" r="2.5" fill="#ffffff" />
             <circle cx="85" cy="38" r="7.5" fill="#09090b" />
             <circle cx="82" cy="35" r="2.5" fill="#ffffff" />
           </g>
-
           <path class="frog-eyelid" d="M 17 38 Q 36 14 55 38 Z" fill="url(#frogSkin)" />
           <path class="frog-eyelid" d="M 65 38 Q 84 14 103 38 Z" fill="url(#frogSkin)" />
-
           <ellipse cx="60" cy="68" rx="46" ry="32" fill="url(#frogSkin)" />
-
           <ellipse cx="28" cy="70" rx="7" ry="4" fill="#f472b6" opacity="0.6" />
           <ellipse cx="92" cy="70" rx="7" ry="4" fill="#f472b6" opacity="0.6" />
-
           <ellipse cx="54" cy="60" rx="1.8" ry="2.8" fill="#14532d" />
           <ellipse cx="66" cy="60" rx="1.8" ry="2.8" fill="#14532d" />
-
           <path d="M 28 68 Q 60 90 92 68" fill="none" stroke="#14532d" stroke-width="4.5" stroke-linecap="round" />
-          <path d="M 26 66 Q 29 70 32 67" fill="none" stroke="#14532d" stroke-width="3" stroke-linecap="round" />
-          <path d="M 94 66 Q 91 70 88 67" fill="none" stroke="#14532d" stroke-width="3" stroke-linecap="round" />
-
           <g class="frog-sunglasses">
             <rect x="20" y="32" width="34" height="20" rx="3" fill="url(#shadesGrad)" stroke="#3f3f46" stroke-width="1.5" />
             <rect x="66" y="32" width="34" height="20" rx="3" fill="url(#shadesGrad)" stroke="#3f3f46" stroke-width="1.5" />
@@ -75,7 +62,6 @@
         </g>
       </svg>
     </div>
-
     <div class="splash-brand">MEMELAND<span class="text-teal">.HUB</span></div>
     <div id="splashStatusText" class="splash-status">در حال اتصال به شبکه آلفا...</div>
   </div>
@@ -86,7 +72,6 @@
       <span class="brand-dot"></span>
       <span class="brand-name">MEMELAND<span class="text-teal">.HUB</span></span>
     </div>
-    
     <div class="header-user">
       <div class="user-pill" onclick="App.switchTab('profile')">
         <span id="headerUserName" class="user-name">...</span>
@@ -95,7 +80,6 @@
     </div>
   </header>
 
-  <!-- صفحات اصلی -->
   <main class="app-main">
     
     <!-- تب ۱: سیگنال‌ها -->
@@ -127,12 +111,8 @@
     <!-- تب ۲: لیدربورد -->
     <section id="tab-leaderboard" class="tab-view">
       <div class="view-switch">
-        <button class="switch-btn active" id="btnLbCallers" onclick="App.setLeaderboardType('callers')">
-          🏆 برترین کالرها
-        </button>
-        <button class="switch-btn" id="btnLbGivers" onclick="App.setLeaderboardType('signal_givers')">
-          📡 سیگنال‌دهندگان
-        </button>
+        <button class="switch-btn active" id="btnLbCallers" onclick="App.setLeaderboardType('callers')">🏆 برترین کالرها</button>
+        <button class="switch-btn" id="btnLbGivers" onclick="App.setLeaderboardType('signal_givers')">📡 سیگنال‌دهندگان</button>
       </div>
       <div id="leaderboardFeedList" class="cards-feed"></div>
     </section>
@@ -140,21 +120,21 @@
     <!-- تب ۳: آکادمی -->
     <section id="tab-academy" class="tab-view">
       <div class="view-switch">
-        <button class="switch-btn active" id="btnAcadStrat" onclick="App.setAcademySubTab('strategies')">
-          🧩 ستاپ‌های معاملاتی
-        </button>
-        <button class="switch-btn" id="btnAcadArt" onclick="App.setAcademySubTab('articles')">
-          📝 مقالات تحلیلی
-        </button>
+        <button class="switch-btn active" id="btnAcadStrat" onclick="App.setAcademySubTab('strategies')">🧩 ستاپ‌ها</button>
+        <button class="switch-btn" id="btnAcadArt" onclick="App.setAcademySubTab('articles')">📝 مقالات</button>
       </div>
       <div id="academyFeedList" class="cards-feed"></div>
     </section>
 
-    <!-- تب ۴: پروفایل تلگرام -->
+    <!-- تب ۴: پروفایل اختصاصی با قاب نئونی -->
     <section id="tab-profile" class="tab-view">
       <div class="card profile-box">
         <div class="profile-header">
-          <div class="profile-avatar">🐸</div>
+          <!-- قاب آواتار وکتوری میم‌کوین با نشان گوشه -->
+          <div id="profileAvatarFrame" class="avatar-frame">
+            <div id="avatarSvgContainer" style="width:100%; height:100%;"></div>
+            <span id="avatarMiniBadge" class="role-badge-mini">🐣</span>
+          </div>
           <div class="profile-info">
             <h3 id="profileFullName" class="profile-name">...</h3>
             <span id="profileUsername" class="profile-username mono">@...</span>
@@ -163,21 +143,26 @@
         
         <div class="profile-status-row">
           <div class="status-item">
-            <span class="status-label">وضعیت حساب:</span>
-            <span id="profileRoleText" class="status-val text-teal">عضو رسمی</span>
+            <span class="status-label">نقش تخصصی در ربات:</span>
+            <span id="profileRoleText" class="status-val profile-role-title text-teal">...</span>
           </div>
           <div class="status-item">
-            <span class="status-label">شناسه تلگرام:</span>
+            <span class="status-label">سهمیه سیگنال امروز:</span>
+            <span id="profileQuotaText" class="status-val mono text-gold">۰ / ۵</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">شناسه عددی تلگرام:</span>
             <span id="profileTelegramId" class="status-val mono">...</span>
           </div>
         </div>
       </div>
 
+      <!-- کنترل پنل اختصاصی ادمین -->
       <div id="adminPanelSection" class="card admin-box" style="display:none;">
-        <div class="admin-box-title">⚙️ ابزارهای مدیریتی (Admin Only)</div>
+        <div class="admin-box-title">⚙️ پنل مدیریت ارشد</div>
         <div class="admin-actions-grid">
-          <button class="btn btn-primary" onclick="App.openAddSignalModal()">➕ ثبت سیگنال جدید</button>
-          <button class="btn btn-secondary" onclick="App.openBulkModal()">📥 ثبت گروهی</button>
+          <button class="btn btn-primary" onclick="App.openAddSignalModal()">➕ ثبت سیگنال</button>
+          <button class="btn btn-secondary" onclick="App.openManageStaffModal()">👥 مدیریت ادمین‌ها</button>
         </div>
       </div>
     </section>
@@ -189,22 +174,10 @@
   </button>
 
   <nav class="bottom-nav">
-    <button class="nav-btn active" onclick="App.switchTab('signals')">
-      <span class="nav-icon">📶</span>
-      <span class="nav-label">سیگنال‌ها</span>
-    </button>
-    <button class="nav-btn" onclick="App.switchTab('leaderboard')">
-      <span class="nav-icon">🏆</span>
-      <span class="nav-label">لیدربورد</span>
-    </button>
-    <button class="nav-btn" onclick="App.switchTab('academy')">
-      <span class="nav-icon">📚</span>
-      <span class="nav-label">آکادمی</span>
-    </button>
-    <button class="nav-btn" onclick="App.switchTab('profile')">
-      <span class="nav-icon">👤</span>
-      <span class="nav-label">پروفایل</span>
-    </button>
+    <button class="nav-btn active" onclick="App.switchTab('signals')"><span class="nav-icon">📶</span><span class="nav-label">سیگنال‌ها</span></button>
+    <button class="nav-btn" onclick="App.switchTab('leaderboard')"><span class="nav-icon">🏆</span><span class="nav-label">لیدربورد</span></button>
+    <button class="nav-btn" onclick="App.switchTab('academy')"><span class="nav-icon">📚</span><span class="nav-label">آکادمی</span></button>
+    <button class="nav-btn" onclick="App.switchTab('profile')"><span class="nav-icon">👤</span><span class="nav-label">پروفایل</span></button>
   </nav>
 
   <div id="bottomSheet" class="bottom-sheet">
@@ -225,9 +198,14 @@
     </div>
   </div>
 
-  <!-- اسکریپت‌ها با کوئری نسخه جدید برای ابطال کش ۳۰۴ -->
-  <script src="/static/js/telegram.js?v=4.2.0"></script>
-  <script src="/static/js/api.js?v=4.2.0"></script>
-  <script src="/static/js/app.js?v=4.2.0"></script>
+  <!-- اسکریپت‌ها با تزریق ماژول آواتار و متغیر شکستن کش -->
+  <script src="/static/js/telegram.js?v=5.1.0"></script>
+  <script src="/static/js/api.js?v=5.1.0"></script>
+  <script src="/static/js/avatars.js?v=5.1.0"></script>
+  <script src="/static/js/app.js?v=5.1.0"></script>
+  <script src="/static/js/avatars.js?v=5.2.0"></script>
+  <script src="/static/js/dossier.js?v=5.2.0"></script>
+  <script src="/static/js/app.js?v=5.2.0"></script>
+  <script src="/static/js/pull_refresh.js?v=5.3.0"></script>
 </body>
 </html>

@@ -1,0 +1,129 @@
+/* =========================================================
+   MemeLand Role Badges, Glowing Avatars & Animation Themes
+   ========================================================= */
+
+/* کانتینر اصلی آواتار پروفایل */
+.avatar-frame {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #11141d;
+  flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.avatar-frame svg {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+/* هاله نئونی گردان دور آواتار */
+.avatar-frame::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  padding: 3px;
+  background: var(--role-gradient, linear-gradient(135deg, #3f3f46, #71717a));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rotateGlow 4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes rotateGlow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* نشان شناور گوشه آواتار */
+.role-badge-mini {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: #181b26;
+  border: 2px solid #07090e;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* ================= تم‌های نوری نقش‌ها ================= */
+
+/* ۱. پپه‌ی سلطنتی (Admin & Super Admin) */
+.theme-admin {
+  --role-gradient: linear-gradient(135deg, #f59e0b, #fbbf24, #d97706);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.35);
+}
+.theme-admin .profile-role-title {
+  color: #fbbf24 !important;
+  text-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+}
+
+/* ۲. سگ کلاه‌بافتنی چاد (VIP Helper) */
+.theme-vip_helper {
+  --role-gradient: linear-gradient(135deg, #a855f7, #06b6d4, #8b5cf6);
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.35);
+}
+.theme-vip_helper .profile-role-title {
+  color: #38bdf8 !important;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+/* ۳. دوج کوین کهنه‌کار (Memeland OG) */
+.theme-og {
+  --role-gradient: linear-gradient(135deg, #eab308, #ca8a04, #fef08a);
+  box-shadow: 0 0 20px rgba(234, 179, 8, 0.3);
+}
+.theme-og .profile-role-title {
+  color: #facc15 !important;
+}
+
+/* ۴. گوریل فضانورد کندل‌های سبز (Alpha Master) */
+.theme-alpha {
+  --role-gradient: linear-gradient(135deg, #10b981, #34d399, #059669);
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.35);
+}
+.theme-alpha .profile-role-title {
+  color: #34d399 !important;
+  text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
+}
+
+/* ۵. کوسه وال کریپتویی (Guardian) */
+.theme-guardian {
+  --role-gradient: linear-gradient(135deg, #0284c7, #38bdf8, #0369a1);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+}
+.theme-guardian .profile-role-title {
+  color: #38bdf8 !important;
+}
+
+/* ۶. قورباغه اکسپلورر (Explorer) */
+.theme-explorer {
+  --role-gradient: linear-gradient(135deg, #84cc16, #a3e635, #4d7c0f);
+  box-shadow: 0 0 16px rgba(132, 204, 22, 0.25);
+}
+.theme-explorer .profile-role-title {
+  color: #a3e635 !important;
+}
+
+/* ۷. جوجه تازه‌کار (Rookie / Member) */
+.theme-rookie, .theme-member {
+  --role-gradient: linear-gradient(135deg, #71717a, #a1a1aa, #52525b);
+  box-shadow: 0 0 10px rgba(161, 161, 170, 0.15);
+}
+.theme-rookie .profile-role-title, .theme-member .profile-role-title {
+  color: #a1a1aa !important;
+}

@@ -1,5 +1,5 @@
 /**
- * MemeLand App Controller (Production TMA)
+ * MemeLand App Controller (TMA v5.1.0)
  */
 
 const App = {
@@ -14,28 +14,37 @@ const App = {
     leaderboardData: { callers: [], signal_givers: [] },
     academyTab: 'strategies',
     strategies: [],
-    articles: []
+    articles: [],
+    staffList: []
   },
 
   async init() {
     TGBridge.init();
     this.startSplashTicker();
 
-    // سوپاپ اطمینان خروج از اسپلش (حداکثر ۳.۵ ثانیه)
     const safetyTimer = setTimeout(() => this.hideSplash(), 3500);
 
+    // پس از لود اولیه در init() فراخوانی شود:
+    PullRefresh.init('#tab-signals', async (isSilent) => {
+      await App.loadSignals();
+      App.renderSignalsList();
+      if (!isSilent) {
+        let session = await API.getSession();
+        if (session) {
+          App.state.session = session;
+          App.updateUserInterface();
+        }
+      }
+    });
+
     try {
-      // ۱. احراز هویت سایلنت تلگرام
       let session = await API.authenticateWebApp();
       if (!session) {
         session = await API.getSession();
       }
       this.state.session = session;
 
-      // ۲. بارگذاری اولیه فید سیگنال‌ها
       await this.loadSignals();
-
-      // ۳. به‌روزرسانی رابط کاربری با هویت موثق تلگرام
       this.updateUserInterface();
       this.renderCurrentView();
     } catch (err) {
@@ -52,7 +61,7 @@ const App = {
     const steps = [
       'در حال اتصال به شبکه آلفا...',
       'اسکن پامپ‌های دکس و سولانا...',
-      'همگام‌سازی سیگنال‌های VIP...',
+      'همگام‌سازی سهمیه و سیگنال‌ها...',
       'آماده‌سازی تیکرهای زنده...'
     ];
     let idx = 0;
@@ -76,10 +85,15 @@ const App = {
     const profileUser = document.getElementById('profileUsername');
     const profileId = document.getElementById('profileTelegramId');
     const profileRole = document.getElementById('profileRoleText');
+    const profileQuota = document.getElementById('profileQuotaText');
     const adminSec = document.getElementById('adminPanelSection');
     const adminFab = document.getElementById('adminFabBtn');
+    
+    // المان‌های آواتار نئونی
+    const avatarFrame = document.getElementById('profileAvatarFrame');
+    const avatarContainer = document.getElementById('avatarSvgContainer');
+    const avatarMiniBadge = document.getElementById('avatarMiniBadge');
 
-    // استخراج کاملاً منعطف شناسه عددی تلگرام
     const tid = s ? (s.telegram_id || (s.user && s.user.id) || (window.Telegram?.WebApp?.initDataUnsafe?.user?.id)) : null;
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
@@ -95,6 +109,24 @@ const App = {
                      null;
 
     const isAdmin = Boolean(s && (s.role === 'admin' || s.is_admin === true));
+    const quota = (s && s.quota) ? s.quota : null;
+
+    // تشخیص کلید نقش جهت رندر آواتار
+    let roleKey = 'rookie';
+    if (isAdmin) {
+      roleKey = (quota && quota.is_super_admin) ? 'super_admin' : 'admin';
+    } else if (quota && quota.role_key) {
+      roleKey = quota.role_key;
+    }
+
+    // رندر گرافیک وکتوری و تم نئونی آواتار
+    if (avatarContainer && window.AvatarRenderer) {
+      avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
+      if (avatarMiniBadge) avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
+      if (avatarFrame) {
+        avatarFrame.className = `avatar-frame theme-${roleKey}`;
+      }
+    }
 
     if (s && (tid || s.token)) {
       if (headerName) headerName.textContent = displayName;
@@ -102,20 +134,19 @@ const App = {
       if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
       if (profileId) profileId.textContent = tid ? String(tid) : '—';
 
+      if (profileRole && quota) {
+        profileRole.textContent = quota.display_role;
+      }
+      if (profileQuota && quota) {
+        profileQuota.textContent = `${quota.signals_today} از ${quota.daily_limit} مصرف شده`;
+      }
+
       if (isAdmin) {
         if (headerAdmin) headerAdmin.style.display = 'inline-block';
-        if (profileRole) {
-          profileRole.textContent = '👑 ادمین ارشد (ADMIN_IDS)';
-          profileRole.style.color = 'var(--gold)';
-        }
         if (adminSec) adminSec.style.display = 'block';
         if (adminFab) adminFab.style.display = 'flex';
       } else {
         if (headerAdmin) headerAdmin.style.display = 'none';
-        if (profileRole) {
-          profileRole.textContent = 'عضو رسمی';
-          profileRole.style.color = 'var(--teal)';
-        }
         if (adminSec) adminSec.style.display = 'none';
         if (adminFab) adminFab.style.display = 'none';
       }
@@ -124,10 +155,7 @@ const App = {
       if (profileName) profileName.textContent = 'کاربر مهمان';
       if (profileUser) profileUser.textContent = 'بدون نشست تلگرام';
       if (profileId) profileId.textContent = '—';
-      if (profileRole) {
-        profileRole.textContent = 'فقط خواندنی';
-        profileRole.style.color = 'var(--text-muted)';
-      }
+      if (profileRole) profileRole.textContent = 'فقط خواندنی';
       if (headerAdmin) headerAdmin.style.display = 'none';
       if (adminSec) adminSec.style.display = 'none';
       if (adminFab) adminFab.style.display = 'none';
@@ -196,6 +224,8 @@ const App = {
 
   renderSignalsList() {
     const listEl = document.getElementById('signalsFeedList');
+    if (!listEl) return;
+
     const isClosed = this.state.signalSubTab === 'closed';
 
     let list = this.state.signals.filter(s => {
@@ -216,9 +246,17 @@ const App = {
       const roiClass = s.outcome_status === 'win' ? 'roi-win' : (s.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
       const roiText = s.result ? s.result : (s.outcome_status === 'open' ? 'درحال معامله' : '—');
       const caller = s.caller_name || s.owner_first_name || 'آلفا';
+      const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
+
+      // ساخت چیپ آدرس کانترکت همراه با کپی ایزوله‌شده
       const caPart = s.contract_address
         ? `<span class="ca-chip" onclick="event.stopPropagation(); TGBridge.copyText('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
         : '';
+
+      // نام کالر قابل کلیک جهت باز شدن پرونده تریدر (Dossier)
+      const callerPart = callerId
+        ? `<span class="caller-chip" onclick="event.stopPropagation(); Dossier.show(${callerId})" style="cursor:pointer; text-decoration:underline;">👤 ${caller}</span>`
+        : `<span>👤 ${caller}</span>`;
 
       return `
         <div class="card-atomic" onclick="App.openSignalDetails(${s.id})">
@@ -231,7 +269,7 @@ const App = {
             <div class="roi-badge ${roiClass}">${roiText}</div>
           </div>
           <div class="card-atomic-bottom">
-            <span>👤 ${caller}</span>
+            ${callerPart}
             ${caPart}
           </div>
         </div>
@@ -281,112 +319,105 @@ const App = {
     TGBridge.syncBackButton(this.state.currentTab !== 'signals');
   },
 
-  setLeaderboardType(type) {
+  // ================= مدال مدیریت کادر و اعطای نقش =================
+  async openManageStaffModal() {
     TGBridge.haptic('selection');
-    this.state.leaderboardType = type;
-    document.getElementById('btnLbCallers').classList.toggle('active', type === 'callers');
-    document.getElementById('btnLbGivers').classList.toggle('active', type === 'signal_givers');
-    this.renderLeaderboard();
+    document.getElementById('modalTitle').textContent = 'مدیریت ادمین‌ها و نقش‌ها';
+    document.getElementById('modalBody').innerHTML = `
+      <div style="margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <h5 style="font-size:12px; margin-bottom:8px; color:var(--teal);">افزودن عضو جدید</h5>
+        <div class="field"><label>شناسه عددی تلگرام (User ID):</label><input id="staffUserId" placeholder="مثلاً 123456789"></div>
+        <div class="field"><label>انتخاب نقش:</label><select id="staffRole">
+          <option value="admin">👑 Admin (مدیر کامل)</option>
+          <option value="vip_helper">💎 VIP Helper (کمک‌ادمین)</option>
+          <option value="og">👑 Memeland OG (۵۰ سیگنال)</option>
+          <option value="alpha">🚀 Memeland Alpha Master (۱۵ سیگنال)</option>
+          <option value="guardian">🦈 Memeland Guardian (۸ سیگنال)</option>
+          <option value="explorer">🐸 Memeland Explorer (۵ سیگنال)</option>
+        </select></div>
+        <button class="btn btn-primary" onclick="App.submitAddStaff()">اعطای دسترسی</button>
+      </div>
+      <div>
+        <h5 style="font-size:12px; margin-bottom:8px;">لیست کادر فعلی</h5>
+        <div id="staffListContainer" style="display:flex; flex-direction:column; gap:6px;">
+          <div style="font-size:11px; color:var(--text-muted);">در حال بارگذاری...</div>
+        </div>
+      </div>
+    `;
+    document.getElementById('modalOverlay').classList.add('show');
+    await this.loadStaffList();
   },
 
-  async renderLeaderboard() {
-    const listEl = document.getElementById('leaderboardFeedList');
-    if (!this.state.leaderboardData.callers.length && !this.state.leaderboardData.signal_givers.length) {
-      listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت جدول رتبه‌بندی...</div>';
-      this.state.leaderboardData = await API.getLeaderboard();
+  async loadStaffList() {
+    const cont = document.getElementById('staffListContainer');
+    try {
+      const resp = await fetch('/site/staff', { headers: API.getHeaders() });
+      if (!resp.ok) throw new Error();
+      const list = await resp.json();
+      this.state.staffList = list;
+
+      if (!list.length) {
+        cont.innerHTML = '<div style="font-size:11px; color:var(--text-muted);">عضوی در دیتابیس ثبت نشده است.</div>';
+        return;
+      }
+
+      cont.innerHTML = list.map(item => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); padding:8px 10px; border-radius:8px; font-size:11px;">
+          <div>
+            <span class="mono" style="font-weight:700;">${item.user_id}</span>
+            <span style="color:var(--text-muted); margin-right:6px;">(${item.role})</span>
+          </div>
+          ${!item.is_super ? `<button class="btn btn-secondary" style="width:auto; padding:2px 8px; color:var(--red); font-size:10px;" onclick="App.removeStaffAction(${item.user_id})">حذف</button>` : '<span style="font-size:10px; color:var(--gold);">Super</span>'}
+        </div>
+      `).join('');
+    } catch (e) {
+      cont.innerHTML = '<div style="font-size:11px; color:var(--red);">خطا در دریافت لیست</div>';
     }
+  },
 
-    const isCallers = this.state.leaderboardType === 'callers';
-    const rows = isCallers ? this.state.leaderboardData.callers : this.state.leaderboardData.signal_givers;
-
-    if (!rows || rows.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">رتبه‌بندی موجود نیست.</div>';
+  async submitAddStaff() {
+    const uid = document.getElementById('staffUserId').value.trim();
+    const role = document.getElementById('staffRole').value;
+    if (!uid || !/^\d+$/.test(uid)) {
+      TGBridge.showAlert('شناسه عددی باید عدد باشد');
       return;
     }
 
-    if (isCallers) {
-      listEl.innerHTML = rows.map((r, i) => `
-        <div class="card-atomic" style="cursor:default;">
-          <div class="card-atomic-top">
-            <div class="token-meta">
-              <span class="mono" style="color:var(--teal); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">👤 ${r.caller_name || 'ناشناس'}</span>
-            </div>
-            <span style="color:var(--gold); font-size:12.5px; font-weight:700;">★ ${r.avg_rating || '5.0'}</span>
-          </div>
-          <div class="card-atomic-bottom">
-            <span>${r.count || 0} کال ثبت‌شده</span>
-            <span>${r.tier ? r.tier.toUpperCase() : 'BRONZE'}</span>
-          </div>
-        </div>
-      `).join('');
+    const resp = await fetch('/site/staff', {
+      method: 'POST',
+      headers: API.getHeaders(),
+      body: JSON.stringify({ user_id: parseInt(uid), role })
+    });
+
+    if (resp.ok) {
+      TGBridge.haptic('success');
+      TGBridge.showAlert('نقش با موفقیت اعمال شد');
+      await this.loadStaffList();
     } else {
-      listEl.innerHTML = rows.map((r, i) => `
-        <div class="card-atomic" style="cursor:default;">
-          <div class="card-atomic-top">
-            <div class="token-meta">
-              <span class="mono" style="color:var(--pink); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">📡 ${r.full_name || r.username || 'کاربر'}</span>
-            </div>
-            <span style="color:var(--teal); font-size:12.5px; font-weight:700;">${r.points || 0} pt</span>
-          </div>
-          <div class="card-atomic-bottom">
-            <span>${r.count || 0} سیگنال · ${r.wins || 0} برد</span>
-            <span>سطح ${r.level || 1}</span>
-          </div>
-        </div>
-      `).join('');
+      TGBridge.haptic('error');
+      TGBridge.showAlert('خطا در ثبت نقش');
     }
   },
 
-  setAcademySubTab(subTab) {
-    TGBridge.haptic('selection');
-    this.state.academyTab = subTab;
-    document.getElementById('btnAcadStrat').classList.toggle('active', subTab === 'strategies');
-    document.getElementById('btnAcadArt').classList.toggle('active', subTab === 'articles');
-    this.renderAcademy();
-  },
+  async removeStaffAction(uid) {
+    const conf = await TGBridge.showConfirm(`آیا از خلع دسترسی کاربر ${uid} مطمئن هستید؟`);
+    if (!conf) return;
 
-  async renderAcademy() {
-    const listEl = document.getElementById('academyFeedList');
+    const resp = await fetch(`/site/staff/${uid}`, {
+      method: 'DELETE',
+      headers: API.getHeaders()
+    });
 
-    if (this.state.academyTab === 'strategies') {
-      if (!this.state.strategies.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت ستاپ‌ها...</div>';
-        this.state.strategies = await API.getContent('strategies');
-      }
-
-      if (!this.state.strategies || this.state.strategies.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">ستاپ تحلیلی ثبت نشده است.</div>';
-        return;
-      }
-
-      listEl.innerHTML = this.state.strategies.map(st => `
-        <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--text);">${st.title}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.7;">${st.desc}</p>
-        </div>
-      `).join('');
+    if (resp.ok) {
+      TGBridge.haptic('success');
+      await this.loadStaffList();
     } else {
-      if (!this.state.articles.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
-        this.state.articles = await API.getContent('articles');
-      }
-
-      if (!this.state.articles || this.state.articles.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
-        return;
-      }
-
-      listEl.innerHTML = this.state.articles.map(art => `
-        <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--teal);">${art.title}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.8; white-space:pre-line;">${art.body || art.desc || ''}</p>
-        </div>
-      `).join('');
+      TGBridge.haptic('error');
+      TGBridge.showAlert('امکان حذف این کاربر وجود ندارد');
     }
   },
 
+  // ================= مدال افزودن سیگنال =================
   openAddSignalModal() {
     TGBridge.haptic('selection');
     document.getElementById('modalTitle').textContent = 'ثبت سیگنال جدید';
@@ -426,9 +457,15 @@ const App = {
       this.closeModal();
       await this.loadSignals();
       this.renderSignalsList();
+      let session = await API.getSession();
+      if (session) {
+        this.state.session = session;
+        this.updateUserInterface();
+      }
     } else {
+      const data = await res.json().catch(() => ({}));
       TGBridge.haptic('error');
-      TGBridge.showAlert('خطا در ثبت سیگنال');
+      TGBridge.showAlert(data.error || 'خطا در ثبت سیگنال');
     }
   },
 
@@ -471,53 +508,6 @@ const App = {
       TGBridge.haptic('error');
       TGBridge.showAlert('خطا در ثبت نتیجه');
     }
-  },
-
-  openBulkModal() {
-    TGBridge.haptic('selection');
-    document.getElementById('modalTitle').textContent = 'ثبت گروهی سیگنال‌ها';
-    document.getElementById('modalBody').innerHTML = `
-      <p style="font-size:11px; color:var(--text-muted); margin-bottom:8px; line-height:1.6;">
-        فرمت هر خط: <b>کتگوری|نماد|توضیح|آدرس‌کانترکت|لینک‌خرید</b><br>
-        کتگوری‌ها: dex / alt / stock / irbourse
-      </p>
-      <div class="field">
-        <textarea id="bulkData" rows="6" placeholder="dex|PEPE|تارگت ۲|0x...|https://..."></textarea>
-      </div>
-      <button class="btn btn-primary" onclick="App.submitBulkSignals()">درون‌ریزی داده‌ها</button>
-    `;
-    document.getElementById('modalOverlay').classList.add('show');
-  },
-
-  async submitBulkSignals() {
-    const raw = document.getElementById('bulkData').value.trim();
-    if (!raw) return;
-
-    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
-    let count = 0;
-
-    for (const line of lines) {
-      const parts = line.split('|').map(p => p.trim());
-      if (parts.length >= 2) {
-        const [channel, coin, note, ca, link] = parts;
-        await API.createSignal({
-          channel: channel || 'dex',
-          coin,
-          note: note || null,
-          contract_address: ca || null,
-          buy_link: link || null,
-          tier: 'free',
-          outcome_status: 'open'
-        });
-        count++;
-      }
-    }
-
-    TGBridge.haptic('success');
-    this.closeModal();
-    TGBridge.showAlert(`${count} سیگنال با موفقیت ثبت شد.`);
-    await this.loadSignals();
-    this.renderSignalsList();
   },
 
   async deleteSignalAction(id) {

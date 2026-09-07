@@ -103,5 +103,14 @@ const API = {
       method: 'DELETE',
       headers: this.getHeaders()
     });
-  }
+  },
+  async getTraderProfile(userId) {
+    try {
+      const resp = await fetch(`${this.baseUrl}/traders/${userId}`, { headers: this.getHeaders() });
+      return resp.ok ? await resp.json() : null;
+    } catch (e) {
+      return null;
+    }
+  },
 };
+
