@@ -1,5 +1,5 @@
 /**
- * MemeLand Views & Feed Renderer
+ * MemeLand Views & Feed Renderer (v6.5.0 with Academic Header Covers)
  */
 
 const Views = {
@@ -82,6 +82,12 @@ const Views = {
         <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
       </div>
       
+      ${s.before_img ? `
+        <div style="margin-bottom:12px; border-radius:12px; overflow:hidden; border:1px solid var(--border);">
+          <img src="${s.before_img}" style="width:100%; display:block; max-height:260px; object-fit:cover;" alt="Chart">
+        </div>` : ''
+      }
+
       ${s.contract_address ? `
         <div style="background:var(--bg); padding:9px 12px; border-radius:10px; margin-bottom:12px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
           <span class="mono">${s.contract_address}</span>
@@ -89,7 +95,7 @@ const Views = {
         </div>` : ''
       }
 
-      ${s.note ? `<p style="font-size:12px; line-height:1.8; color:var(--text-muted); margin-bottom:14px;">${s.note}</p>` : ''}
+      ${s.note ? `<p style="font-size:12px; line-height:1.8; color:var(--text-muted); margin-bottom:14px; white-space:pre-line;">${s.note}</p>` : ''}
       
       ${s.buy_link ? `<a href="${s.buy_link}" target="_blank" class="btn btn-primary" style="margin-bottom:10px;">خرید مستقیم در دکس ↗</a>` : ''}
 
@@ -179,7 +185,7 @@ const Views = {
     }
   },
 
-  // ================= تب آکادمی =================
+  // ================= تب آکادمی با مقالات هدر تصاویری =================
   setAcademySubTab(subTab) {
     if (window.TGBridge) TGBridge.haptic('selection');
     App.state.academyTab = subTab;
@@ -193,6 +199,8 @@ const Views = {
   async renderAcademy() {
     const listEl = document.getElementById('academyFeedList');
     if (!listEl) return;
+
+    const isAdmin = Boolean(App.state.session && (App.state.session.role === 'admin' || App.state.session.is_admin === true));
 
     if (App.state.academyTab === 'strategies') {
       if (!App.state.strategies || !App.state.strategies.length) {
@@ -216,8 +224,19 @@ const Views = {
         </div>
       `).join('');
     } else {
+      let adminActionHeader = '';
+      if (isAdmin) {
+        adminActionHeader = `
+          <div style="margin-bottom:12px;">
+            <button class="btn btn-secondary" style="border-style:dashed; border-color:var(--teal); color:var(--teal);" onclick="Modals.openAddArticleModal()">
+              ➕ نگارش و انتشار مقاله جدید
+            </button>
+          </div>
+        `;
+      }
+
       if (!App.state.articles || !App.state.articles.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
+        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
         try {
           App.state.articles = await API.getContent('articles');
         } catch (e) {
@@ -226,16 +245,34 @@ const Views = {
       }
 
       if (!App.state.articles || App.state.articles.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
+        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
         return;
       }
 
-      listEl.innerHTML = App.state.articles.map(art => `
-        <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--teal);">${art.title || 'مقاله آموزشی'}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.8; white-space:pre-line;">${art.body || art.desc || ''}</p>
-        </div>
-      `).join('');
+      const articlesHtml = App.state.articles.map(art => {
+        const headerImg = art.image || art.header_image || null;
+        return `
+          <div class="article-card">
+            ${headerImg ? `
+              <div class="article-cover">
+                <img src="${headerImg}" alt="${art.title || ''}" loading="lazy">
+              </div>` : ''
+            }
+            <div class="article-content">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+                <h4 class="article-title">${art.title || 'مقاله آموزشی'}</h4>
+                ${isAdmin && art.id ? `
+                  <button class="btn-del-article" onclick="Modals.deleteArticleAction(${art.id})">حذف</button>
+                ` : ''}
+              </div>
+              <div class="article-body">${art.body || art.desc || ''}</div>
+              ${art.created_at ? `<span class="article-date mono">${art.created_at}</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      listEl.innerHTML = adminActionHeader + articlesHtml;
     }
   }
 };

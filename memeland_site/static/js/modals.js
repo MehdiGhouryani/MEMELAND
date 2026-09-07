@@ -1,9 +1,9 @@
 /**
- * MemeLand Modals & Actions Controller
+ * MemeLand Modals & Actions Controller (v6.5.0 with Article Publishing)
  */
 
 const Modals = {
-  // ================= مدال ثبت سیگنال =================
+  // ================= مدال ثبت سیگنال با آپلود واترمارک =================
   openAddSignalModal() {
     if (window.TGBridge) TGBridge.haptic('selection');
     document.getElementById('modalTitle').textContent = 'ثبت سیگنال جدید';
@@ -15,12 +15,59 @@ const Modals = {
         <option value="stock">سهام جهانی</option>
         <option value="irbourse">بورس ایران</option>
       </select></div>
+      <div class="field">
+        <label>تصویر چارت (واترمارک خودکار):</label>
+        <input type="file" id="signalPhotoFileInput" accept="image/*" onchange="Modals.handleImageUpload(this, 'signalBeforeImg', 'uploadStatusText')">
+        <input type="hidden" id="signalBeforeImg">
+        <div id="uploadStatusText" style="font-size:10.5px; color:var(--text-muted); margin-top:4px;">فرمت‌های مجاز: JPG, PNG (حداکثر ۸MB)</div>
+      </div>
       <div class="field"><label>آدرس کانترکت (CA):</label><input id="newCA" placeholder="آدرس کانترکت"></div>
       <div class="field"><label>لینک خرید (GMGN / Raydium):</label><input id="newBuyLink" placeholder="https://..."></div>
-      <div class="field"><label>توضیح / تارگت‌ها:</label><textarea id="newNote" rows="3"></textarea></div>
-      <button class="btn btn-primary" onclick="Modals.submitNewSignal()">ثبت نهایی</button>
+      <div class="field"><label>توضیح / تارگت‌ها (کپشن):</label><textarea id="newNote" rows="3" placeholder="تحلیل یا اهداف قیمتی..."></textarea></div>
+      <button class="btn btn-primary" id="btnSubmitSignal" onclick="Modals.submitNewSignal()">ثبت نهایی سیگنال</button>
     `;
     document.getElementById('modalOverlay').classList.add('show');
+  },
+
+  // متد جامع آپلود تصاویر با هندلینگ هم‌زمان سیگنال و هدر مقاله
+  async handleImageUpload(input, targetHiddenId, statusElId) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const status = document.getElementById(statusElId);
+    if (status) {
+      status.textContent = '⏳ در حال آپلود و پردازش تصویر...';
+      status.style.color = 'var(--gold)';
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const resp = await fetch('/site/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ml_token') || ''}`
+        },
+        body: formData
+      });
+
+      if (!resp.ok) throw new Error('Upload error');
+      const data = await resp.json();
+      
+      document.getElementById(targetHiddenId).value = data.url;
+      if (status) {
+        status.textContent = '✅ تصویر با موفقیت بارگذاری شد.';
+        status.style.color = '#4ade80';
+      }
+      if (window.sendRemoteLog) window.sendRemoteLog('IMG_UPLOAD_OK: ' + data.url.split('/').pop());
+    } catch(err) {
+      if (status) {
+        status.textContent = '❌ خطا در آپلود تصویر';
+        status.style.color = 'var(--red)';
+      }
+      if (window.sendRemoteLog) window.sendRemoteLog('IMG_UPLOAD_ERR: ' + err);
+    }
   },
 
   async submitNewSignal() {
@@ -33,6 +80,7 @@ const Modals = {
     const payload = {
       coin,
       channel: document.getElementById('newChannel').value,
+      before_img: document.getElementById('signalBeforeImg').value || null,
       contract_address: document.getElementById('newCA').value.trim() || null,
       buy_link: document.getElementById('newBuyLink').value.trim() || null,
       note: document.getElementById('newNote').value.trim() || null,
@@ -57,6 +105,90 @@ const Modals = {
         TGBridge.haptic('error');
         TGBridge.showAlert(data.error || 'خطا در ثبت سیگنال');
       }
+    }
+  },
+
+  // ================= مدال افزودن مقاله و پست آموزشی جدید =================
+  openAddArticleModal() {
+    if (window.TGBridge) TGBridge.haptic('selection');
+    document.getElementById('modalTitle').textContent = 'انتشار مقاله در آکادمی';
+    document.getElementById('modalBody').innerHTML = `
+      <div class="field">
+        <label>عنوان مقاله:</label>
+        <input id="articleTitle" placeholder="مثلاً روانشناسی ترید میم‌کوین‌ها...">
+      </div>
+      <div class="field">
+        <label>عکس هدر و شاخص مقاله:</label>
+        <input type="file" id="articlePhotoInput" accept="image/*" onchange="Modals.handleImageUpload(this, 'articleHeaderImg', 'articleUploadStatus')">
+        <input type="hidden" id="articleHeaderImg">
+        <div id="articleUploadStatus" style="font-size:10.5px; color:var(--text-muted); margin-top:4px;">فرمت‌های مجاز: JPG, PNG</div>
+      </div>
+      <div class="field">
+        <label>متن کامل مقاله:</label>
+        <textarea id="articleBody" rows="7" placeholder="محتوای آموزشی، نکات مدیریت سرمایه یا استراتژی..."></textarea>
+      </div>
+      <button class="btn btn-primary" id="btnSubmitArticle" onclick="Modals.submitNewArticle()">انتشار در آکادمی</button>
+    `;
+    document.getElementById('modalOverlay').classList.add('show');
+  },
+
+  async submitNewArticle() {
+    const title = document.getElementById('articleTitle').value.trim();
+    const body = document.getElementById('articleBody').value.trim();
+    const image = document.getElementById('articleHeaderImg').value || null;
+
+    if (!title || !body) {
+      if (window.TGBridge) TGBridge.showAlert('عنوان و متن مقاله الزامی است');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/site/content/articles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('ml_token') || ''}`
+        },
+        body: JSON.stringify({ title, body, image })
+      });
+
+      if (resp.ok) {
+        if (window.TGBridge) TGBridge.haptic('success');
+        this.closeModal();
+        App.state.articles = [];
+        await Views.renderAcademy();
+      } else {
+        const d = await resp.json().catch(() => ({}));
+        if (window.TGBridge) TGBridge.showAlert(d.error || 'خطا در ثبت مقاله');
+      }
+    } catch (e) {
+      if (window.TGBridge) TGBridge.showAlert('خطا در برقراری ارتباط');
+    }
+  },
+
+  async deleteArticleAction(articleId) {
+    if (window.TGBridge) {
+      const conf = await TGBridge.showConfirm('آیا از حذف این مقاله مطمئن هستید؟');
+      if (!conf) return;
+    }
+
+    try {
+      const resp = await fetch(`/site/content/articles/${articleId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('ml_token') || ''}`
+        }
+      });
+
+      if (resp.ok) {
+        if (window.TGBridge) TGBridge.haptic('success');
+        App.state.articles = [];
+        await Views.renderAcademy();
+      } else {
+        if (window.TGBridge) TGBridge.showAlert('خطا در حذف مقاله');
+      }
+    } catch (e) {
+      if (window.TGBridge) TGBridge.showAlert('خطا در ارتباط با سرور');
     }
   },
 

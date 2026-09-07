@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MemeLand Hub - Production Design System (TMA Optimized)
+   MemeLand Hub - Production Design System (TMA Optimized v6.5.0)
    ========================================================================== */
 
 :root {
@@ -101,7 +101,6 @@ body {
   overflow: visible;
 }
 
-/* جهش و ویبره موزون کاراکتر */
 .frog-head-group {
   transform-origin: 60px 85px;
   animation: frogVibe 2.2s ease-in-out infinite;
@@ -114,7 +113,6 @@ body {
   75% { transform: translateY(-5px) scale(1.02) rotate(2deg); }
 }
 
-/* پالس سایه متناسب با پرش */
 .frog-shadow {
   transform-origin: 60px 112px;
   animation: shadowPulse 2.2s ease-in-out infinite;
@@ -125,7 +123,6 @@ body {
   25%, 75% { transform: scale(0.75); opacity: 0.15; }
 }
 
-/* پلک زدن طبیعی */
 .frog-eyelid {
   transform-origin: 50% 30%;
   animation: frogBlink 3.6s infinite;
@@ -136,7 +133,6 @@ body {
   96%, 98% { transform: scaleY(1); }
 }
 
-/* ردیابی مردمک‌ها */
 .frog-pupils {
   animation: eyesLook 4s ease-in-out infinite alternate;
 }
@@ -147,7 +143,6 @@ body {
   80%, 100% { transform: translate(-2.5px, 0); }
 }
 
-/* رفلکس عینک دودی کریپتویی */
 .frog-sunglasses {
   transform-origin: 60px 42px;
   animation: glassesShine 2s ease-in-out infinite;
@@ -324,7 +319,7 @@ body {
 }
 
 /* ==========================================================================
-   Atomic Trading Cards (Photon/GMGN Style)
+   Atomic Trading Cards
    ========================================================================== */
 
 .cards-feed {
@@ -406,6 +401,73 @@ body {
   font-family: 'JetBrains Mono';
   font-size: 9.5px;
   cursor: copy;
+}
+
+/* ==========================================================================
+   Academy & Article Cards with Image Covers
+   ========================================================================== */
+
+.article-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+
+.article-cover {
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+  background: var(--bg-surface);
+  position: relative;
+}
+
+.article-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.article-content {
+  padding: 12px 14px 14px;
+}
+
+.article-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--teal);
+  line-height: 1.5;
+}
+
+.article-body {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.85;
+  white-space: pre-line;
+  margin-top: 6px;
+  text-align: justify;
+}
+
+.article-date {
+  display: inline-block;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.btn-del-article {
+  background: transparent;
+  border: 1px solid rgba(255, 77, 97, 0.3);
+  color: var(--red);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* ==========================================================================

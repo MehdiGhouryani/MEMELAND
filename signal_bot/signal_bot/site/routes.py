@@ -1,14 +1,16 @@
 """
-مسیرهای HTTP وب‌سرور ربات روی اپلیکیشن aiohttp
+مسیرهای HTTP وب‌سرور ربات روی اپلیکیشن aiohttp به همراه اندپوینت آپلود، واترمارک و مدیریت محتوای آکادمی
 """
 
 import json
 import os
+import uuid
 from datetime import datetime, timedelta
 
 from aiohttp import web
 
 from signal_bot.logger import logger
+from signal_bot.services import image_upload
 from signal_bot.site import auth, kv, ratings, signals, traders
 
 _SITE_DIR = os.path.abspath(
@@ -82,7 +84,6 @@ async def handle_index(request: web.Request) -> web.Response:
 
 
 async def handle_client_log(request: web.Request) -> web.Response:
-    """دریافت فوری خطاهای کلاینت و رندر فرانت‌اند برای ثبت در لاگ متمرکز سرور"""
     try:
         data = await request.json()
         logger.info(f"[JS] {data.get('msg')}")
@@ -117,6 +118,43 @@ async def handle_session(request: web.Request) -> web.Response:
         return _json_error(401, "نشست نامعتبر است یا منقضی شده")
     logger.info(f"SessOK: uid={session['telegram_id']} adm={session['is_admin']}")
     return web.json_response(session)
+
+
+# ================= آپلود مستقیم تصویر با واترمارک =================
+
+async def handle_image_upload(request: web.Request) -> web.Response:
+    session = auth.get_session(_get_session_from_request(request))
+    if not session:
+        return _json_error(401, "نشست نامعتبر است")
+
+    reader = await request.multipart()
+    field = await reader.next()
+    if not field or field.name != "image":
+        return _json_error(400, "فیلد image الزامی است")
+
+    raw_bytes = await field.read()
+    if len(raw_bytes) > 8 * 1024 * 1024:
+        return _json_error(400, "حجم عکس نباید بیشتر از ۸ مگابایت باشد")
+
+    filename = f"web_{uuid.uuid4().hex[:10]}.jpg"
+
+    if image_upload._enabled():
+        public_url = await image_upload.upload_web_image(raw_bytes, filename)
+    else:
+        from signal_bot.services.watermark import apply_watermark
+        processed_bytes = apply_watermark(raw_bytes)
+        upload_dir = os.path.join(_STATIC_DIR, "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, filename)
+        with open(file_path, "wb") as f:
+            f.write(processed_bytes)
+        public_url = f"/static/uploads/{filename}"
+
+    if not public_url:
+        return _json_error(500, "خطا در پردازش و آپلود تصویر")
+
+    logger.info(f"WebUploadOK: uid={session['telegram_id']} file={filename}")
+    return web.json_response({"url": public_url})
 
 
 # ================= مدیریت ادمین‌ها و اعطای نقش =================
@@ -207,7 +245,7 @@ async def handle_signals_create(request: web.Request) -> web.Response:
 
     try:
         sid = signals.create_signal(**payload)
-        logger.info(f"SigNew: sid={sid} coin={payload.get('coin')} by={payload['owner_telegram_id']}")
+        logger.info(f"SigNew: sid={sid} coin={payload.get('coin')} img={bool(payload.get('before_img'))} by={payload['owner_telegram_id']}")
     except TypeError as e:
         return _json_error(400, str(e))
 
@@ -295,6 +333,8 @@ async def handle_leaderboard(request: web.Request) -> web.Response:
     })
 
 
+# ================= مدیریت محتوای آکادمی (مقالات و ستاپ‌ها) =================
+
 _ALLOWED_CONTENT_KEYS = {"articles", "strategies"}
 
 
@@ -306,6 +346,74 @@ async def handle_content_get(request: web.Request) -> web.Response:
     return web.json_response(json.loads(value) if value else [])
 
 
+async def handle_content_post(request: web.Request) -> web.Response:
+    """ثبت مقاله یا ستاپ جدید در آکادمی توسط ادمین"""
+    if not _require_admin(request):
+        return _json_error(403, "دسترسی فقط برای ادمین")
+
+    key = request.match_info["key"]
+    if key not in _ALLOWED_CONTENT_KEYS:
+        return _json_error(404, "کلید نامعتبر است")
+
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "داده ارسالی نامعتبر است")
+
+    title = str(body.get("title", "")).strip()
+    text = str(body.get("body", "") or body.get("desc", "")).strip()
+    image = body.get("image") or body.get("header_image") or None
+
+    if not title or not text:
+        return _json_error(400, "عنوان و متن مقاله الزامی است")
+
+    raw_items = kv.kv_get(key)
+    items = json.loads(raw_items) if raw_items else []
+
+    new_item = {
+        "id": int(datetime.now().timestamp()),
+        "title": title,
+        "body": text,
+        "desc": text[:140] + ("..." if len(text) > 140 else ""),
+        "image": image,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+    }
+
+    # قرار دادن مقاله جدید در ابتدای لیست
+    items.insert(0, new_item)
+    kv.kv_set(key, json.dumps(items, ensure_ascii=False))
+    logger.info(f"ContentAdd: key={key} id={new_item['id']} title='{title[:25]}'")
+
+    return web.json_response({"ok": True, "item": new_item})
+
+
+async def handle_content_delete(request: web.Request) -> web.Response:
+    """حذف مقاله یا ستاپ آموزشی با شناسه عددی"""
+    if not _require_admin(request):
+        return _json_error(403, "دسترسی فقط برای ادمین")
+
+    key = request.match_info["key"]
+    if key not in _ALLOWED_CONTENT_KEYS:
+        return _json_error(404, "کلید نامعتبر است")
+
+    try:
+        target_id = int(request.match_info["item_id"])
+    except (ValueError, TypeError):
+        return _json_error(400, "شناسه آیتم نامعتبر است")
+
+    raw_items = kv.kv_get(key)
+    items = json.loads(raw_items) if raw_items else []
+    new_items = [it for it in items if it.get("id") != target_id]
+
+    if len(new_items) == len(items):
+        return _json_error(404, "آیتم یافت نشد")
+
+    kv.kv_set(key, json.dumps(new_items, ensure_ascii=False))
+    logger.info(f"ContentDel: key={key} id={target_id}")
+
+    return web.json_response({"ok": True})
+
+
 def register(app: web.Application):
     app.router.add_get("/", handle_index)
 
@@ -314,6 +422,7 @@ def register(app: web.Application):
 
     # روت‌های کلاینت لاگر و احراز هویت
     app.router.add_post("/site/client-log", handle_client_log)
+    app.router.add_post("/site/upload", handle_image_upload)
     app.router.add_post("/webapp-auth", handle_webapp_auth)
     app.router.add_post("/site/webapp-auth", handle_webapp_auth)
     app.router.add_get("/site/session", handle_session)
@@ -328,3 +437,5 @@ def register(app: web.Application):
     app.router.add_delete("/site/signals/{id}", handle_signals_delete)
     app.router.add_get("/site/leaderboard", handle_leaderboard)
     app.router.add_get("/site/content/{key}", handle_content_get)
+    app.router.add_post("/site/content/{key}", handle_content_post)
+    app.router.add_delete("/site/content/{key}/{item_id}", handle_content_delete)

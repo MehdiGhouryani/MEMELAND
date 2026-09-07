@@ -1,7 +1,5 @@
 """
-دامنه ادمین: پنل مدیریت، بررسی سیگنال‌های در انتظار، ثبت نتیجه، آمار کلی،
-مدیریت کاربران (بلاک/امتیاز/رول/VIP Helper)، پیام همگانی، خروجی اکسل،
-پایان دوره و تقسیم جایزه.
+دامنه ادمین: پنل مدیریت، تایید سیگنال‌ها، ثبت نتیجه، مدیریت متن واترمارک و لاگ‌های فشرده
 """
 import csv
 import io
@@ -59,19 +57,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 <b>واریزها</b> — استخر جایزه + حمایت مستقیم\n"
             f"📢 <b>همگانی</b> — پیام به همه‌ی کاربران\n"
             f"📊 <b>آمار</b> — کاربر/سیگنال/جایزه/VIP Helper\n"
+            f"🖼 <b>واترمارک</b> — دستور <code>/setwatermark متن</code>\n"
             f"👥 <b>کاربران</b> — جست‌وجو → بلاک/امتیاز/درجه/پاداش/VIP\n"
             f"🏆 <b>پایان دوره</b> — تقسیم ۵۰/۳۰/۲۰٪، فصل بعد خودکاره\n"
             f"📤 <b>اکسل</b> — خروجی CSV امتیازها\n"
             f"🆕 <b>فصل جدید</b> — فقط اگه فصلی فعال نبود لازمه\n"
             f"{SEP}\n"
-            f"💬  <b>دستور (گروه یا دایرکت)</b>\n"
-            f"<code>/fastcall کوین [long/short]</code>\n"
-            f"<code>/fullsignal [کوین] [جهت] [توضیح]</code> (± عکس)\n"
-            f"{SEP}\n"
             f"🎖  <b>سقف سیگنال روزانه هر درجه</b>\n"
-            f"{role_lines}\n"
-            f"{SEP}\n"
-            f"💎  VIP Helper فقط سیگنال تأیید/رد می‌کنه، به بقیه‌ی پنل دسترسی نداره.",
+            f"{role_lines}\n{SEP}",
             reply_markup=admin_kb(), parse_mode=ParseMode.HTML
         )
 
@@ -431,6 +424,41 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def cmd_setwatermark(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /setwatermark TEXT  — تنظیم متن و آیدی واترمارک کپسولی
+    /setwatermark off   — غیرفعال‌سازی موقت
+    """
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        return
+    raw = (update.message.text or "").split(maxsplit=1)
+    if len(raw) < 2:
+        from signal_bot.services.watermark import get_configured_watermark_text, is_watermark_enabled
+        status = "فعال ✅" if is_watermark_enabled() else "غیرفعال ❌"
+        await update.message.reply_html(
+            f"<b>🖼  تنظیمات واترمارک</b>\n{SEP}\n\n"
+            f"متن فعلی: <code>{esc(get_configured_watermark_text())}</code>\n"
+            f"وضعیت: <b>{status}</b>\n\n"
+            "استفاده:\n"
+            "<code>/setwatermark @ChannelID</code>\n"
+            "<code>/setwatermark off</code> (جهت غیرفعال‌سازی)"
+        )
+        return
+
+    from signal_bot.site.kv import kv_set
+    val = raw[1].strip()
+    if val.lower() == "off":
+        kv_set("settings:watermark_enabled", "false")
+        logger.info(f"WTM_TOGGLE: disabled by uid={user.id}")
+        await update.message.reply_html("❌  واترمارک تصاویر سیگنال <b>غیرفعال</b> شد.")
+    else:
+        kv_set("settings:watermark_enabled", "true")
+        kv_set("settings:watermark_text", val)
+        logger.info(f"WTM_SET: '{val}' by uid={user.id}")
+        await update.message.reply_html(f"✅  واترمارک کپسولی تنظیم شد:\n<code>{esc(val)}</code>")
+
+
 async def handle_step_set_solana_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE, user, text):
     if user.id not in ADMIN_IDS:
         return
@@ -614,9 +642,8 @@ async def cmd_markpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         rewards_repo.mark_paid(reward_id)
         logger.info(f"PaidMark: rid={reward_id} uid={target_id}")
-        await update.message.reply_text(
-            f"✅  پاداش #{reward_id}  (💰{row[2]} — {esc(row[3]) or '—'})  الان paid شد.",
-            parse_mode=ParseMode.HTML)
+        await update.message.reply_html(
+            f"✅  پاداش #{reward_id}  (💰{row[2]} — {esc(row[3]) or '—'})  الان paid شد.")
         return
 
     rows = rewards_repo.list_unpaid_for_user(target_id)
@@ -627,4 +654,4 @@ async def cmd_markpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for rid, amount, reason, granted_at in rows:
         lines.append(f"#{rid}  💰{amount}  —  {esc(reason) or '—'}  ({granted_at[:16]})\n")
     lines.append(f"\nبرای paid‌کردن: <code>/markpaid {target_id} REWARD_ID</code>")
-    await update.message.reply_text("".join(lines), parse_mode=ParseMode.HTML)
+    await update.message.reply_html("".join(lines))
