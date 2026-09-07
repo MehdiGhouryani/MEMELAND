@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- بدون این اسکریپت window.Telegram.WebApp همیشه undefined می‌مونه (حتی
+     وقتی از داخل خودِ تلگرام به‌عنوان Mini App باز شده باشه) — که یعنی
+     initData هیچ‌وقت وجود نداره و لاگین WebApp اصلاً trigger نمی‌شه. -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <title>مرکز آلفا | MemeLand Persia × CryptoTrend</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -45,16 +49,36 @@
     background: radial-gradient(1200px 600px at 20% -10%, #131826 0%, var(--bg) 45%), var(--bg);
     color:var(--text); font-family:'Vazirmatn', sans-serif; min-height:100vh; padding-bottom:70px;
   }
-  .mono{font-family:'JetBrains Mono', monospace;}
+  /* فاز ۴-۳: کلاس mono همیشه رو دیتای عددی/لاتین (آدرس قرارداد، جفت‌ارز،
+     درصد، قیمت) استفاده می‌شه، نه رو متن فارسی — ولی صفحه dir="rtl"ه، پس
+     بدون این، الگوریتم bidi مرورگر بعضی رشته‌های ترکیبی (مثل «-۱۲.۴٪» یا
+     آدرس هگز) رو ممکنه برعکس/نامرتب نشون بده. unicode-bidi:plaintext یعنی
+     جهت این المان از محتوای خودش (که تماماً LTRه) تشخیص داده بشه، نه از
+     والد RTL. */
+  .mono{font-family:'JetBrains Mono', monospace; direction:ltr; unicode-bidi:plaintext;}
   .display{font-family:'Space Grotesk', 'Vazirmatn', sans-serif;}
 
   .hero{padding:40px 20px 20px; text-align:center; position:relative; overflow:hidden;}
   .hero::before{content:''; position:absolute; inset:0; background: linear-gradient(120deg, var(--teal-glow), transparent 40%, var(--pink-glow)); opacity:0.12; pointer-events:none;}
-  .top-row{display:flex; justify-content:space-between; align-items:center; max-width:560px; margin:0 auto 18px; padding:0 4px; gap:8px;}
-  .brand-eyebrow{font-family:'JetBrains Mono', monospace; font-size:10.5px; letter-spacing:2.5px; color:var(--muted); text-transform:uppercase;}
-  .top-controls{display:flex; align-items:center; gap:6px;}
+  .top-row{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; max-width:560px; margin:0 auto 18px; padding:0 4px; gap:8px 10px;}
+  .brand-eyebrow{font-family:'JetBrains Mono', monospace; font-size:10.5px; letter-spacing:2.5px; color:var(--muted); text-transform:uppercase; flex-shrink:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .top-controls{display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
+  /* روی صفحه‌های خیلی باریک (~۳۲۰-۳۶۰px)، اگه eyebrow + همه‌ی دکمه‌ها تو یه
+     خط جا نشن، flex-wrap بالا خودش می‌شکونتش به خط دوم (به‌جای بریده‌شدن/
+     رفتن‌روی‌هم قبلی) — ولی برای این‌که eyebrow کل عرض خط اول رو نگیره و
+     دکمه‌ها رو مجبور به شکستن نکنه، رو صفحه‌ی خیلی باریک مخفیش می‌کنیم؛
+     برند از عنوان اصلی (h1) پایین‌تر هم مشخصه.
+  */
+  @media (max-width:380px){
+    .brand-eyebrow{ display:none; }
+    .top-row{ justify-content:flex-end; }
+  }
   .lang-toggle{display:flex; background:var(--glass); border:1px solid var(--glass-b); border-radius:20px; padding:3px; gap:2px;}
-  .lang-opt{padding:5px 10px; font-size:10.5px; border-radius:16px; color:var(--muted); cursor:pointer; font-family:'JetBrains Mono';}
+  /* فاز ۴-۳ (بازبینی UI/UX — دسترسی‌پذیری، ادامه‌ی فاز ۴-۲): این چهارتا
+     (lang-opt/nav-item/cat-tab/tab) تو بازبینی قبلی جا افتاده بودن — بقیه‌ی
+     دکمه‌های کوچیک (mini-btn/ba-btn/admin-btn/filter-chip) به ۳۲-۳۴px
+     رسیده بودن، این‌ها نه. الان همه رو هم‌تراز با همون حداقل می‌کنیم. */
+  .lang-opt{padding:5px 10px; min-height:32px; display:inline-flex; align-items:center; font-size:10.5px; border-radius:16px; color:var(--muted); cursor:pointer; font-family:'JetBrains Mono';}
   .lang-opt.on{background:var(--tint); color:var(--text);}
   .admin-btn{background:var(--glass); border:1px solid var(--glass-b); color:var(--muted); font-size:11px; padding:8px 14px; min-height:34px; display:inline-flex; align-items:center; border-radius:20px; cursor:pointer; white-space:nowrap;}
   .admin-btn.on{color:var(--gold); border-color:var(--gold);}
@@ -63,7 +87,7 @@
   .brand-sub{color:var(--muted); font-size:13.5px; max-width:480px; margin:0 auto; line-height:1.9;}
 
   .nav{display:flex; gap:6px; max-width:600px; margin:24px auto 0; padding:0 16px; overflow-x:auto;}
-  .nav-item{flex-shrink:0; padding:10px 16px; border-radius:20px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;}
+  .nav-item{flex-shrink:0; padding:10px 16px; min-height:34px; display:inline-flex; align-items:center; border-radius:20px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;}
   .nav-item.on{color:var(--text); border-color:var(--text); background:var(--tint);}
 
   .section{max-width:560px; margin:0 auto; padding:20px 16px 0; display:none;}
@@ -75,14 +99,14 @@
   .stat-label{font-size:10.5px; color:var(--muted); margin-top:3px;}
 
   .tabs{display:flex; gap:8px; margin-bottom:14px;}
-  .tab{flex:1; padding:12px 8px; border-radius:14px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-weight:600; font-size:12.5px; cursor:pointer; text-align:center;}
+  .tab{flex:1; padding:12px 8px; min-height:34px; border-radius:14px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-weight:600; font-size:12.5px; cursor:pointer; text-align:center;}
   .tab small{display:block; font-size:9.5px; font-weight:400; margin-top:2px; opacity:.75;}
   .tab.active-alt{background:linear-gradient(135deg, rgba(45,217,199,.18), rgba(45,217,199,.05)); border-color:var(--teal); color:var(--teal); box-shadow:0 0 24px -6px var(--teal-glow);}
   .tab.active-dex{background:linear-gradient(135deg, rgba(255,77,141,.2), rgba(255,77,141,.06)); border-color:var(--pink); color:var(--pink); box-shadow:0 0 24px -6px var(--pink-glow);}
   .cat-tabs{display:flex; gap:6px; margin-bottom:14px; overflow-x:auto;}
-  .cat-tab{flex-shrink:0; padding:10px 14px; border-radius:14px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-weight:600; font-size:12px; cursor:pointer; white-space:nowrap;}
+  .cat-tab{flex-shrink:0; padding:10px 14px; min-height:34px; display:inline-flex; align-items:center; border-radius:14px; border:1px solid var(--glass-b); background:var(--glass); color:var(--muted); font-weight:600; font-size:12px; cursor:pointer; white-space:nowrap;}
   .cat-badge{font-size:9.5px; padding:2px 8px; border-radius:8px; font-family:'JetBrains Mono';}
-  .hashtag{font-size:10px; color:var(--muted); font-family:'JetBrains Mono';}
+  .hashtag{font-size:10px; color:var(--muted); font-family:'JetBrains Mono'; direction:ltr; unicode-bidi:plaintext;}
 
   .filters{display:flex; gap:6px; margin-bottom:12px; overflow-x:auto;}
   .filter-chip{padding:8px 14px; min-height:32px; display:inline-flex; align-items:center; border-radius:20px; font-size:11.5px; border:1px solid var(--glass-b); color:var(--muted); background:var(--glass); white-space:nowrap; cursor:pointer;}
@@ -125,7 +149,7 @@
   .win{color:var(--teal);} .loss{color:var(--red);} .open{color:var(--gold);}
   .result-date{font-size:9.5px; color:var(--muted); margin-top:2px;}
   .history-trail{display:flex; gap:5px; flex-wrap:wrap; margin-top:9px; padding-top:9px; border-top:1px dashed var(--glass-b);}
-  .history-chip{font-size:10px; font-family:'JetBrains Mono'; background:var(--glass); padding:3px 8px; border-radius:8px; color:var(--muted);}
+  .history-chip{font-size:10px; font-family:'JetBrains Mono'; direction:ltr; unicode-bidi:plaintext; background:var(--glass); padding:3px 8px; border-radius:8px; color:var(--muted);}
   .history-chip.latest{color:var(--teal); border:1px solid rgba(45,217,199,.3);}
   .admin-actions{display:flex; gap:6px; margin-top:10px;}
   .mini-btn{font-size:10.5px; padding:8px 12px; min-height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--glass-b); background:transparent; color:var(--muted); cursor:pointer;}
@@ -171,7 +195,12 @@
 
   .modal-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); backdrop-filter: blur(4px); z-index:100; align-items:flex-end; justify-content:center;}
   .modal-overlay.show{display:flex;}
-  .modal{background:var(--bg2); border:1px solid var(--glass-b); border-radius:22px 22px 0 0; width:100%; max-width:520px; padding:22px 20px 28px; max-height:88vh; overflow-y:auto;}
+  /* فاز ۴-۳: max-height قبلاً فقط 88vh بود — vh رو WebView تلگرام وقتی
+     کیبورد باز می‌شه لزوماً به‌روز نمی‌شه (خصوصاً iOS)، پس مودال/دکمه‌های
+     پایینش ممکنه زیر کیبورد گم بشن. --tg-vh با tg.viewportHeight واقعی
+     (که خودِ تلگرام موقع باز/بسته‌شدن کیبورد آپدیتش می‌کنه) از جاوااسکریپت
+     ست می‌شه؛ بیرون از تلگرام (fallback ندارتش) همون 88vh قبلی می‌مونه. */
+  .modal{background:var(--bg2); border:1px solid var(--glass-b); border-radius:22px 22px 0 0; width:100%; max-width:520px; padding:22px 20px 28px; max-height:min(88vh, var(--tg-vh, 100vh) - 24px); overflow-y:auto;}
   .modal h3{font-size:15px; margin-bottom:16px;}
   .field{margin-bottom:12px;}
   .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:5px;}
@@ -212,20 +241,20 @@
   <div class="nav-item" data-s="callers" onclick="setSection('callers')"><span data-i18n="navCallers">👤 کالرها</span></div>
   <div class="nav-item" data-s="strategies" onclick="setSection('strategies')"><span data-i18n="navStrategies">🧩 استراتژی</span></div>
   <div class="nav-item" data-s="articles" onclick="setSection('articles')"><span data-i18n="navArticles">📝 مقالات</span></div>
-  <div class="nav-item" id="navAdminItem" data-s="admin" onclick="setSection('admin')" style="display:none;"><span>⚙️ پنل ادمین</span></div>
+  <div class="nav-item" id="navAdminItem" data-s="admin" onclick="setSection('admin')" style="display:none;"><span data-i18n="navAdmin">⚙️ پنل ادمین</span></div>
 </div>
 
 <!-- HOME (لندینگ‌پیج) -->
 <div class="section show" id="sec-home">
   <div class="hero-stats" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px;">
-    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatClosed" style="font-size:22px;">—</div><div class="card-meta">سیگنال بسته‌شده</div></div>
-    <div class="card" style="text-align:center;"><div class="result-val win" id="homeStatWinRate" style="font-size:22px;">—</div><div class="card-meta">Win Rate کلی</div></div>
-    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatGivers" style="font-size:22px;">—</div><div class="card-meta">سیگنال‌دهنده</div></div>
+    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatClosed" style="font-size:22px;">—</div><div class="card-meta" data-i18n="homeStatClosedLabel">سیگنال بسته‌شده</div></div>
+    <div class="card" style="text-align:center;"><div class="result-val win" id="homeStatWinRate" style="font-size:22px;">—</div><div class="card-meta" data-i18n="homeStatWinRateLabel">Win Rate کلی</div></div>
+    <div class="card" style="text-align:center;"><div class="result-val" id="homeStatGivers" style="font-size:22px;">—</div><div class="card-meta" data-i18n="homeStatGiversLabel">سیگنال‌دهنده</div></div>
   </div>
-  <div class="gallery-tagline">بهترین کال‌های ۷ روز اخیر</div>
+  <div class="gallery-tagline" data-i18n="homeTopWinsTagline">بهترین کال‌های ۷ روز اخیر</div>
   <div class="list" id="homeTopWinsList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
   <div id="homeCtaRow" style="display:flex; gap:8px; margin:14px 0;"></div>
-  <div class="gallery-tagline">آخرین مقالات</div>
+  <div class="gallery-tagline" data-i18n="homeArticlesTagline">آخرین مقالات</div>
   <div class="list" id="homeArticlesList"></div>
 </div>
 
@@ -238,22 +267,22 @@
   <div id="coinSearchResults" style="display:none;"></div>
   <div id="normalResultsWrap">
     <div class="stats-strip">
-      <div class="stat-card"><div class="stat-num mono" id="statTotal">—</div><div class="stat-label">کل نتیجه</div></div>
-      <div class="stat-card"><div class="stat-num mono" id="statWinrate">—</div><div class="stat-label">وین‌ریت</div></div>
-      <div class="stat-card"><div class="stat-num mono" id="statAvgR">—</div><div class="stat-label">میانگین نتیجه</div></div>
+      <div class="stat-card"><div class="stat-num mono" id="statTotal">—</div><div class="stat-label" data-i18n="statTotalLabel">کل نتیجه</div></div>
+      <div class="stat-card"><div class="stat-num mono" id="statWinrate">—</div><div class="stat-label" data-i18n="statWinrateLabel">وین‌ریت</div></div>
+      <div class="stat-card"><div class="stat-num mono" id="statAvgR">—</div><div class="stat-label" data-i18n="statAvgRLabel">میانگین نتیجه</div></div>
     </div>
     <div class="cat-tabs" id="catTabs"></div>
     <div class="filters">
-      <div class="filter-chip on" data-f="all" onclick="setFilter('all')">همه</div>
-      <div class="filter-chip" data-f="win" onclick="setFilter('win')">برد</div>
-      <div class="filter-chip" data-f="loss" onclick="setFilter('loss')">باخت</div>
-      <div class="filter-chip" data-f="vip" onclick="setFilter('vip')">وی‌آی‌پی</div>
+      <div class="filter-chip on" data-f="all" onclick="setFilter('all')" data-i18n="filterAll">همه</div>
+      <div class="filter-chip" data-f="win" onclick="setFilter('win')" data-i18n="filterWin">برد</div>
+      <div class="filter-chip" data-f="loss" onclick="setFilter('loss')" data-i18n="filterLoss">باخت</div>
+      <div class="filter-chip" data-f="vip" onclick="setFilter('vip')" data-i18n="filterVip">وی‌آی‌پی</div>
     </div>
     <div class="filters" style="margin-top:2px;">
-      <div class="filter-chip sort-chip on" data-sort="top" onclick="setSort('top')">🏆 برترین</div>
-      <div class="filter-chip sort-chip" data-sort="newest" onclick="setSort('newest')">🆕 جدیدترین</div>
-      <div class="filter-chip sort-chip" data-sort="oldest" onclick="setSort('oldest')">📜 از روز اول</div>
-      <div class="filter-chip sort-chip" data-sort="best" onclick="setSort('best')">📈 پرسودترین</div>
+      <div class="filter-chip sort-chip on" data-sort="top" onclick="setSort('top')" data-i18n="sortTop">🏆 برترین</div>
+      <div class="filter-chip sort-chip" data-sort="newest" onclick="setSort('newest')" data-i18n="sortNewest">🆕 جدیدترین</div>
+      <div class="filter-chip sort-chip" data-sort="oldest" onclick="setSort('oldest')" data-i18n="sortOldest">📜 از روز اول</div>
+      <div class="filter-chip sort-chip" data-sort="best" onclick="setSort('best')" data-i18n="sortBest">📈 پرسودترین</div>
     </div>
     <div class="list" id="signalsList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
     <div class="leaderboard" id="leaderboardWrap" style="display:none;">
@@ -266,7 +295,7 @@
 <!-- ACTIVE (all categories, filterable) -->
 <div class="section" id="sec-active">
   <div class="card" style="margin-bottom:14px; text-align:center; padding:14px;">
-    <div style="font-size:12px; color:var(--muted);">همه‌ی سیگنال‌ها و کال‌های بازِ هر ۴ کتگوری — به محض بسته‌شدن، وارد بخش نتایج میشن.</div>
+    <div style="font-size:12px; color:var(--muted);" data-i18n="activeDesc">همه‌ی سیگنال‌ها و کال‌های بازِ هر ۴ کتگوری — به محض بسته‌شدن، وارد بخش نتایج میشن.</div>
   </div>
   <div class="cat-tabs" id="activeCatTabs"></div>
   <div class="list" id="activeList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
@@ -275,12 +304,12 @@
 <!-- CALLERS / PROFILES -->
 <div class="section" id="sec-callers">
   <div class="strat-subtabs">
-    <button class="tab active-alt" id="callersViewLbTab" onclick="setCallersView('leaderboard')">🏆 لیدربورد</button>
-    <button class="tab" id="callersViewListTab" onclick="setCallersView('list')">👤 لیست کامل</button>
+    <button class="tab active-alt" id="callersViewLbTab" onclick="setCallersView('leaderboard')" data-i18n="callersViewLb">🏆 لیدربورد</button>
+    <button class="tab" id="callersViewListTab" onclick="setCallersView('list')" data-i18n="callersViewList">👤 لیست کامل</button>
   </div>
   <div class="strat-subtabs" id="leaderboardKindTabs" style="margin-top:8px;">
-    <button class="tab active-alt" id="lbKindCallersTab" onclick="setLeaderboardKind('callers')">برترین کالرها</button>
-    <button class="tab" id="lbKindGiversTab" onclick="setLeaderboardKind('signal_givers')">برترین سیگنال‌دهندگان</button>
+    <button class="tab active-alt" id="lbKindCallersTab" onclick="setLeaderboardKind('callers')" data-i18n="lbKindCallers">برترین کالرها</button>
+    <button class="tab" id="lbKindGiversTab" onclick="setLeaderboardKind('signal_givers')" data-i18n="lbKindGivers">برترین سیگنال‌دهندگان</button>
   </div>
   <div class="list" id="leaderboardList"><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div><div class="skel-card"><div class="skel-line" style="width:70%;"></div><div class="skel-line" style="width:40%;"></div><div class="skel-line"></div></div></div>
   <div class="list" id="callersList" style="display:none;"></div>
@@ -289,8 +318,8 @@
 <!-- STRATEGIES -->
 <div class="section" id="sec-strategies">
   <div class="strat-subtabs">
-    <button class="tab active-alt" id="stSimpleTab" onclick="setStratTier('simple')">الگوهای ساده<small>رایگان</small></button>
-    <button class="tab" id="stAdvTab" onclick="setStratTier('advanced')">الگوهای پیشرفته<small>قفل‌شده</small></button>
+    <button class="tab active-alt" id="stSimpleTab" onclick="setStratTier('simple')"><span data-i18n="stSimpleLabel">الگوهای ساده</span><small data-i18n="tierFree">رایگان</small></button>
+    <button class="tab" id="stAdvTab" onclick="setStratTier('advanced')"><span data-i18n="stAdvLabel">الگوهای پیشرفته</span><small data-i18n="tierLocked">قفل‌شده</small></button>
   </div>
   <div class="list" id="strategiesList"></div>
 </div>
@@ -332,10 +361,10 @@
   </div>
 </div>
 
-<div class="footer-note">داده‌ها به‌صورت مشترک ذخیره می‌شن — هر بروزرسانی برای همه‌ی بازدیدکننده‌ها قابل مشاهده‌ست.</div>
+<div class="footer-note" data-i18n="footerNote">داده‌ها به‌صورت مشترک ذخیره می‌شن — هر بروزرسانی برای همه‌ی بازدیدکننده‌ها قابل مشاهده‌ست.</div>
 
 <button class="fab" id="mainFab" onclick="openAddModal()" data-i18n="addBtn">+ افزودن</button>
-<button class="fab" id="bulkFab" onclick="openBulkModal()" style="display:none; bottom:78px; background:linear-gradient(90deg, var(--gold), var(--teal));">📥 درون‌ریزی گروهی</button>
+<button class="fab" id="bulkFab" onclick="openBulkModal()" style="display:none; bottom:78px; background:linear-gradient(90deg, var(--gold), var(--teal));" data-i18n="bulkFabBtn">📥 درون‌ریزی گروهی</button>
 
 <!-- ADD/EDIT MODAL -->
 <div class="modal-overlay" id="modalOverlay">
@@ -363,10 +392,32 @@ const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp 
 // [data-theme="light"]) خودکار اعمال می‌شن؛ هیوهای برند (تیل/صورتی/طلایی)
 // تو هر دو حالت حفظ می‌شن، فقط برای کنتراست عمیق‌تر/سبک‌تر می‌شن.
 const THEME_BG = { dark: '#080a10', light: '#f6f4f0' };
+// فاز ۴-۳ (بازبینی UI/UX): قبلاً فقط dark/light رو دو پالت ثابت سوییچ
+// می‌کرد. تلگرام یه شیء tg.themeParams هم می‌ده (bg_color/text_color/
+// hint_color/secondary_bg_color...) که رنگ *دقیق* همون کلاینت/تم خاص
+// کاربره (چند نوع تیره‌ی مختلف: Dark عادی، Dark Blue، OLED سیاه مطلق، تم‌
+// سفارشی) — نه فقط یه حالت تیره‌ی عمومی. الان رنگ‌های خنثی (بک‌گراند/متن/
+// hint) رو وقتی در دسترس باشه از همون‌جا می‌گیریم؛ هیوهای برند (تیل/صورتی/
+// طلایی/ایندیگو) دست‌نخورده می‌مونن چون بخشی از هویت بصری اپن، نه چیزی که
+// باید با تم میزبان یکی بشه.
 function applyTelegramTheme(){
   const scheme = (tg && tg.colorScheme === 'light') ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', scheme);
-  if(tg && tg.setBackgroundColor){ try{ tg.setBackgroundColor(THEME_BG[scheme]); }catch(e){} }
+  const root = document.documentElement.style;
+  const tp = tg && tg.themeParams;
+  if(tp && tp.bg_color){
+    root.setProperty('--bg', tp.bg_color);
+    root.setProperty('--bg2', tp.secondary_bg_color || tp.bg_color);
+    if(tp.text_color) root.setProperty('--text', tp.text_color);
+    if(tp.hint_color) root.setProperty('--muted', tp.hint_color);
+  } else {
+    // بدون themeParams (مثلاً تست تو مرورگر معمولی، بیرون از تلگرام)،
+    // این override ها رو پاک می‌کنیم تا پالت ثابت [data-theme] (بالای
+    // فایل) دوباره اعمال بشه — رفتار قبلی، بدون تغییر.
+    ['--bg','--bg2','--text','--muted'].forEach(v => root.removeProperty(v));
+  }
+  const bgForHeader = (tp && tp.bg_color) ? tp.bg_color : THEME_BG[scheme];
+  if(tg && tg.setBackgroundColor){ try{ tg.setBackgroundColor(bgForHeader); }catch(e){} }
 }
 
 // فاز ۳: هلپر واحد برای لرزش لمسی بومی تلگرام — جای صدا زدن مستقیم
@@ -412,11 +463,31 @@ if(tg){
   if(tg.setHeaderColor) try{ tg.setHeaderColor('secondary_bg_color'); }catch(e){}
   applyTelegramTheme();
   if(tg.onEvent) try{ tg.onEvent('themeChanged', applyTelegramTheme); }catch(e){}
+  // فاز ۴-۳: --tg-vh رو با ارتفاع واقعی viewport تلگرام (که خودِ تلگرام
+  // موقع باز/بسته‌شدن کیبورد صحنه‌ی صفحه‌کلید آپدیتش می‌کنه) سینک نگه
+  // می‌داره — .modal بالا از همین برای max-height استفاده می‌کنه تا موقع
+  // باز بودن کیبورد، مودال/دکمه‌هاش زیرش گم نشن.
+  const syncViewportHeight = () => {
+    const h = tg.viewportHeight || window.innerHeight;
+    document.documentElement.style.setProperty('--tg-vh', h + 'px');
+  };
+  syncViewportHeight();
+  if(tg.onEvent) try{ tg.onEvent('viewportChanged', syncViewportHeight); }catch(e){}
   if(tg.BackButton) try{ tg.BackButton.onClick(() => setSection('home')); }catch(e){}
   onTelegramWebAppAuth();  // fire-and-forget؛ خودش موفق بشه restoreSession() رو صدا می‌زنه
 } else {
   document.documentElement.setAttribute('data-theme', 'dark');
 }
+// فاز ۴-۳: وقتی کیبورد باز می‌شه، اینپوت فوکوس‌شده ممکنه هنوز زیر کیبورد
+// (یا لبه‌ی پایین مودال) بمونه — این یه‌بار روی خودِ سند delegate می‌شه
+// (نه هر اینپوت جدا، چون فرم‌ها با innerHTML دوباره ساخته می‌شن)، فقط رو
+// اینپوت‌های داخل مودال، با یه تأخیر کوچیک برای این‌که کیبورد واقعاً باز
+// شده باشه قبل از اسکرول.
+document.addEventListener('focusin', (e) => {
+  if(e.target.matches && e.target.matches('.modal input, .modal select, .modal textarea')){
+    setTimeout(() => { try{ e.target.scrollIntoView({block:'center', behavior:'smooth'}); }catch(err){} }, 300);
+  }
+});
 // ================= پایان تشخیص محیط =================
 
 // پین/رول فعلی فقط تو حافظه‌ی همین session نگه داشته می‌شه (نه تو کد، نه تو
@@ -684,20 +755,52 @@ let sortMode = 'top';
 let currentStratTier = 'simple';
 let myName = '';
 
+// فاز ۴-۳ (بازبینی UI/UX): قبلاً I18N فقط ~۱۰ کلید داشت (عنوان‌های نوبار
+// + هدر) و بقیه‌ی کل رابط کاربری (استت‌های خانه، فیلترها، تب‌های زیرصفحه،
+// فوتر) هاردکد فارسی بودن — یعنی زدن دکمه‌ی EN عملاً چیزی رو عوض نمی‌کرد.
+// الان همه‌ی متن‌های *ثابتِ رابط کاربری* (chrome) اینجا اضافه شدن.
+// ⚠️ عمداً این‌ها ترجمه نشدن، چون محتوای واقعی سایتن نه chrome: متن خودِ
+// سیگنال‌ها/مقاله‌ها/استراتژی‌ها (از دیتابیس، توسط ادمین به فارسی نوشته
+// می‌شن)، نام‌های دسته‌بندی تو CATS (آلت‌کوین/دکس/...، این‌ها برندینگ
+// محصولن)، و کل پنل ادمین (ابزار داخلی صاحب سایت، نه کاربر عمومی).
 const I18N = {
   fa: {
     roleBtn:'ادمین', profileBtn:'👤 پروفایل من', heroTitle:'مرکز آلفا',
     heroSub:'سیگنال، جم، تحلیل فاندامنتال و استراتژی — همه جا شفاف، همه جا قابل پیگیری.',
     navSignals:'✅ نتایج', navActive:'🔴 کال‌های فعال', navCallers:'👤 کالرها',
-    navStrategies:'🧩 استراتژی', navArticles:'📝 مقالات', tagline:'گذشته در آینده تکرار می‌شود',
-    addBtn:'+ افزودن'
+    navStrategies:'🧩 استراتژی', navArticles:'📝 مقالات', navAdmin:'⚙️ پنل ادمین',
+    tagline:'گذشته در آینده تکرار می‌شود', addBtn:'+ افزودن', bulkFabBtn:'📥 درون‌ریزی گروهی',
+    homeStatClosedLabel:'سیگنال بسته‌شده', homeStatWinRateLabel:'Win Rate کلی',
+    homeStatGiversLabel:'سیگنال‌دهنده', homeTopWinsTagline:'بهترین کال‌های ۷ روز اخیر',
+    homeArticlesTagline:'آخرین مقالات',
+    statTotalLabel:'کل نتیجه', statWinrateLabel:'وین‌ریت', statAvgRLabel:'میانگین نتیجه',
+    filterAll:'همه', filterWin:'برد', filterLoss:'باخت', filterVip:'وی‌آی‌پی',
+    sortTop:'🏆 برترین', sortNewest:'🆕 جدیدترین', sortOldest:'📜 از روز اول', sortBest:'📈 پرسودترین',
+    activeDesc:'همه‌ی سیگنال‌ها و کال‌های بازِ هر ۴ کتگوری — به محض بسته‌شدن، وارد بخش نتایج میشن.',
+    callersViewLb:'🏆 لیدربورد', callersViewList:'👤 لیست کامل',
+    lbKindCallers:'برترین کالرها', lbKindGivers:'برترین سیگنال‌دهندگان',
+    stSimpleLabel:'الگوهای ساده', stAdvLabel:'الگوهای پیشرفته',
+    tierFree:'رایگان', tierLocked:'قفل‌شده',
+    footerNote:'داده‌ها به‌صورت مشترک ذخیره می‌شن — هر بروزرسانی برای همه‌ی بازدیدکننده‌ها قابل مشاهده‌ست.'
   },
   en: {
     roleBtn:'Admin', profileBtn:'👤 My Profile', heroTitle:'Alpha Hub',
     heroSub:'Signals, gems, fundamental calls and strategies — transparent and fully trackable.',
     navSignals:'✅ Results', navActive:'🔴 Active Calls', navCallers:'👤 Callers',
-    navStrategies:'🧩 Strategy', navArticles:'📝 Articles', tagline:'History repeats itself in the future',
-    addBtn:'+ Add'
+    navStrategies:'🧩 Strategy', navArticles:'📝 Articles', navAdmin:'⚙️ Admin Panel',
+    tagline:'History repeats itself in the future', addBtn:'+ Add', bulkFabBtn:'📥 Bulk Import',
+    homeStatClosedLabel:'Closed Signals', homeStatWinRateLabel:'Overall Win Rate',
+    homeStatGiversLabel:'Signal Givers', homeTopWinsTagline:"Best calls of the last 7 days",
+    homeArticlesTagline:'Latest Articles',
+    statTotalLabel:'Total Results', statWinrateLabel:'Win Rate', statAvgRLabel:'Avg. Result',
+    filterAll:'All', filterWin:'Win', filterLoss:'Loss', filterVip:'VIP',
+    sortTop:'🏆 Top', sortNewest:'🆕 Newest', sortOldest:'📜 From Day One', sortBest:'📈 Most Profitable',
+    activeDesc:'All open signals/calls across all 4 categories — moves to Results as soon as it closes.',
+    callersViewLb:'🏆 Leaderboard', callersViewList:'👤 Full List',
+    lbKindCallers:'Top Callers', lbKindGivers:'Top Signal Givers',
+    stSimpleLabel:'Simple Patterns', stAdvLabel:'Advanced Patterns',
+    tierFree:'Free', tierLocked:'Locked',
+    footerNote:'Data is shared — every update is visible to all visitors.'
   }
 };
 
