@@ -56,3 +56,17 @@
   margin-top: 5px;
   font-weight: 500;
 }
+
+/* مهار تاچ پیش‌فرض برای اجرای بدون باگ کشش به پایین */
+.app-main,
+#tab-signals {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ptr-indicator {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  pointer-events: none;
+}
