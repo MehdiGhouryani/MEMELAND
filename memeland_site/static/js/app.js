@@ -106,11 +106,12 @@ const App = {
     const avatarContainer = document.getElementById('avatarSvgContainer');
     const avatarMiniBadge = document.getElementById('avatarMiniBadge');
 
-    const tid = s ? (s.telegram_id || s.user?.id || window.Telegram?.WebApp?.initDataUnsafe?.user?.id) : null;
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const tid = s ? (s.telegram_id || s.user?.id || tgUser?.id) : tgUser?.id;
     const displayName = s?.display_name || s?.user?.first_name || s?.first_name || tgUser?.first_name || 'کاربر تلگرام';
     const username = s?.username || s?.user?.username || tgUser?.username || null;
     const quota = s?.quota || null;
+    const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
     // تشخیص دقیق وضعیت ادمین
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
@@ -121,9 +122,15 @@ const App = {
     else if (isAdmin) roleKey = 'admin';
     else if (quota?.role_key && quota.role_key !== 'rookie') roleKey = quota.role_key;
 
-    if (avatarContainer && window.AvatarRenderer) {
-      avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
+    // رندر هوشمند: عکس واقعی تلگرام در صورت وجود، یا وکتور SVG تم‌دار
+    if (avatarContainer) {
+      if (photoUrl) {
+        avatarContainer.innerHTML = `<img src="${photoUrl}" alt="${displayName}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.outerHTML=window.AvatarRenderer ? AvatarRenderer.getAvatarSvg('${roleKey}') : ''">`;
+      } else if (window.AvatarRenderer) {
+        avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
+      }
     }
+
     if (avatarMiniBadge && window.AvatarRenderer) {
       avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
     }
@@ -131,17 +138,21 @@ const App = {
       avatarFrame.className = `avatar-frame theme-${roleKey}`;
     }
 
-    if (s && (tid || s.token)) {
-      if (headerName) headerName.textContent = displayName;
-      if (profileName) profileName.textContent = displayName;
-      if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
-      if (profileId) profileId.textContent = tid ? String(tid) : '—';
-      if (profileRole) profileRole.textContent = quota?.display_role || (isAdmin ? '👑 مدیر ارشد' : 'عضو رسمی');
-      if (profileQuota) profileQuota.textContent = `${quota?.signals_today || 0} از ${quota?.daily_limit || (isAdmin ? 999 : 5)} مصرف شده`;
+    if (headerName) headerName.textContent = displayName;
+    if (profileName) profileName.textContent = displayName;
+    if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
+    if (profileId) profileId.textContent = tid ? String(tid) : '—';
+    if (profileRole) profileRole.textContent = quota?.display_role || (isAdmin ? '👑 مدیر ارشد' : 'عضو رسمی');
+    if (profileQuota) profileQuota.textContent = `${quota?.signals_today || 0} از ${quota?.daily_limit || (isAdmin ? 999 : 5)} مصرف شده`;
 
-      if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
-      if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
-      if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
+    if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
+    if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
+    if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
+
+    if (window.sendRemoteLog) {
+      const hasImg = Boolean(avatarContainer && avatarContainer.querySelector('img'));
+      const hasSvg = Boolean(avatarContainer && avatarContainer.querySelector('svg'));
+      window.sendRemoteLog(`UI_SYNC: uid=${tid} role=${roleKey} adm=${isAdmin} img=${hasImg} svg=${hasSvg}`);
     }
   },
 
