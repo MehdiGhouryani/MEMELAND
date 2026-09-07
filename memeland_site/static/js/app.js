@@ -1,5 +1,5 @@
 /**
- * MemeLand App Controller (TMA Production v5.5.0)
+ * MemeLand App Controller (Production Stable v5.6.0)
  */
 
 const App = {
@@ -19,41 +19,56 @@ const App = {
   },
 
   async init() {
-    TGBridge.init();
-    this.startSplashTicker();
-
-    const safetyTimer = setTimeout(() => this.hideSplash(), 3500);
-
-    // راه‌اندازی Pull-to-Refresh
-    if (window.PullRefresh) {
-      PullRefresh.init('#tab-signals', async (isSilent) => {
-        await App.loadSignals();
-        App.renderSignalsList();
-        if (!isSilent) {
-          const session = await API.getSession();
-          if (session) {
-            App.state.session = session;
-            App.updateUserInterface();
-          }
-        }
-      });
+    try {
+      if (window.TGBridge) TGBridge.init();
+    } catch (e) {
+      console.warn('TGBridge init error:', e);
     }
 
+    this.startSplashTicker();
+    const safetyTimer = setTimeout(() => this.hideSplash(), 3000);
+
     try {
-      let session = await API.authenticateWebApp();
-      if (!session) {
-        session = await API.getSession();
+      // ۱. احراز هویت نشست
+      let session = null;
+      try {
+        session = await API.authenticateWebApp();
+        if (!session) session = await API.getSession();
+      } catch (e) {
+        console.warn('Auth fallback:', e);
       }
       this.state.session = session;
 
+      // ۲. بارگذاری سیگنال‌ها
       await this.loadSignals();
+
+      // ۳. به‌روزرسانی رابط کاربری و پروفایل
       this.updateUserInterface();
       this.renderCurrentView();
+
+      // ۴. راه‌اندازی امن Pull-to-Refresh در انتهای کار
+      if (window.PullRefresh && typeof PullRefresh.init === 'function') {
+        try {
+          PullRefresh.init('#tab-signals', async (isSilent) => {
+            await App.loadSignals();
+            App.renderSignalsList();
+            if (!isSilent) {
+              const freshSession = await API.getSession();
+              if (freshSession) {
+                App.state.session = freshSession;
+                App.updateUserInterface();
+              }
+            }
+          });
+        } catch (err) {
+          console.warn('PullRefresh init failed silently:', err);
+        }
+      }
     } catch (err) {
-      console.warn('Init error:', err);
+      console.error('Core init error:', err);
     } finally {
       clearTimeout(safetyTimer);
-      setTimeout(() => this.hideSplash(), 350);
+      setTimeout(() => this.hideSplash(), 300);
     }
   },
 
@@ -70,7 +85,7 @@ const App = {
     this._splashInterval = setInterval(() => {
       idx = (idx + 1) % steps.length;
       statusEl.textContent = steps[idx];
-    }, 750);
+    }, 700);
   },
 
   hideSplash() {
@@ -91,7 +106,6 @@ const App = {
     const adminSec = document.getElementById('adminPanelSection');
     const adminFab = document.getElementById('adminFabBtn');
     
-    // المان‌های آواتار
     const avatarFrame = document.getElementById('profileAvatarFrame');
     const avatarContainer = document.getElementById('avatarSvgContainer');
     const avatarMiniBadge = document.getElementById('avatarMiniBadge');
@@ -113,7 +127,6 @@ const App = {
     const isAdmin = Boolean(s && (s.role === 'admin' || s.is_admin === true));
     const quota = (s && s.quota) ? s.quota : null;
 
-    // تشخیص دقیق کلید نقش
     let roleKey = 'rookie';
     if (isAdmin) {
       roleKey = (quota && quota.is_super_admin) ? 'super_admin' : 'admin';
@@ -121,10 +134,14 @@ const App = {
       roleKey = quota.role_key;
     }
 
-    // رندر SVG و بج نقش
-    if (avatarContainer && window.AvatarRenderer) {
-      avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
-      if (avatarMiniBadge) avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
+    // رندر مستقیم و مستقل وکتور آواتار
+    if (avatarContainer) {
+      if (window.AvatarRenderer && typeof AvatarRenderer.getAvatarSvg === 'function') {
+        avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
+        if (avatarMiniBadge) avatarMiniBadge.textContent = AvatarRenderer.getRoleMiniBadge(roleKey);
+      } else {
+        avatarContainer.innerHTML = '<div style="font-size:38px; display:flex; align-items:center; justify-content:center; height:100%;">🐸</div>';
+      }
       if (avatarFrame) {
         avatarFrame.className = `avatar-frame theme-${roleKey}`;
       }
@@ -137,10 +154,10 @@ const App = {
       if (profileId) profileId.textContent = tid ? String(tid) : '—';
 
       if (profileRole && quota) {
-        profileRole.textContent = quota.display_role;
+        profileRole.textContent = quota.display_role || 'عضو رسمی';
       }
       if (profileQuota && quota) {
-        profileQuota.textContent = `${quota.signals_today} از ${quota.daily_limit} مصرف شده`;
+        profileQuota.textContent = `${quota.signals_today || 0} از ${quota.daily_limit || 5} مصرف شده`;
       }
 
       if (isAdmin) {
@@ -165,7 +182,7 @@ const App = {
   },
 
   switchTab(tabName) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.state.currentTab = tabName;
 
     document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
@@ -178,37 +195,40 @@ const App = {
     const navBtn = document.querySelectorAll('.bottom-nav .nav-btn')[tabMap[tabName]];
     if (navBtn) navBtn.classList.add('active');
 
-    TGBridge.syncBackButton(tabName !== 'signals');
+    if (window.TGBridge) TGBridge.syncBackButton(tabName !== 'signals');
     this.renderCurrentView();
   },
 
   setSignalSubTab(subTab) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.state.signalSubTab = subTab;
-    document.getElementById('subTabActive').classList.toggle('active', subTab === 'active');
-    document.getElementById('subTabClosed').classList.toggle('active', subTab === 'closed');
+    const subActive = document.getElementById('subTabActive');
+    const subClosed = document.getElementById('subTabClosed');
+    if (subActive) subActive.classList.toggle('active', subTab === 'active');
+    if (subClosed) subClosed.classList.toggle('active', subTab === 'closed');
     this.renderSignalsList();
   },
 
   setCategory(cat) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.state.category = cat;
     document.querySelectorAll('#catFilterChips .chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('onclick').includes(`'${cat}'`));
+      c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
     });
     this.renderSignalsList();
   },
 
   onSearchInput(val) {
-    this.state.searchQuery = val.trim().toLowerCase();
+    this.state.searchQuery = (val || '').trim().toLowerCase();
     this.renderSignalsList();
   },
 
   async loadSignals() {
     try {
       this.state.signals = await API.getSignals();
-      const openCount = this.state.signals.filter(s => s.outcome_status === 'open').length;
-      document.getElementById('activeCountBadge').textContent = openCount;
+      const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open').length;
+      const countBadge = document.getElementById('activeCountBadge');
+      if (countBadge) countBadge.textContent = openCount;
     } catch (e) {
       this.state.signals = [];
     }
@@ -230,7 +250,7 @@ const App = {
 
     const isClosed = this.state.signalSubTab === 'closed';
 
-    let list = this.state.signals.filter(s => {
+    let list = (this.state.signals || []).filter(s => {
       const matchStatus = isClosed
         ? (s.outcome_status === 'win' || s.outcome_status === 'loss')
         : (s.outcome_status === 'open');
@@ -251,11 +271,12 @@ const App = {
       const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
 
       const caPart = s.contract_address
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); TGBridge.copyText('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
+        ? `<span class="ca-chip" onclick="event.stopPropagation(); if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
         : '';
 
-      const callerPart = (callerId && window.Dossier)
-        ? `<span class="caller-chip" onclick="event.stopPropagation(); Dossier.show(${callerId})" style="cursor:pointer; text-decoration:underline;">👤 ${caller}</span>`
+      // باز شدن تضمینی پرونده تریدر
+      const callerPart = callerId
+        ? `<span class="caller-chip" onclick="event.stopPropagation(); App.openTraderDossier(${callerId})" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--teal);">👤 ${caller}</span>`
         : `<span>👤 ${caller}</span>`;
 
       return `
@@ -277,13 +298,22 @@ const App = {
     }).join('');
   },
 
+  openTraderDossier(userId) {
+    if (window.Dossier && typeof Dossier.show === 'function') {
+      Dossier.show(userId);
+    } else {
+      console.warn('Dossier module not ready for ID:', userId);
+    }
+  },
+
   openSignalDetails(signalId) {
-    TGBridge.haptic('light');
-    const s = this.state.signals.find(item => item.id === signalId);
+    if (window.TGBridge) TGBridge.haptic('light');
+    const s = (this.state.signals || []).find(item => item.id === signalId);
     if (!s) return;
 
     const isAdmin = Boolean(this.state.session && (this.state.session.role === 'admin' || this.state.session.is_admin === true));
     const body = document.getElementById('sheetContent');
+    if (!body) return;
 
     body.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -294,7 +324,7 @@ const App = {
       ${s.contract_address ? `
         <div style="background:var(--bg); padding:9px 12px; border-radius:10px; margin-bottom:12px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
           <span class="mono">${s.contract_address}</span>
-          <button class="btn btn-teal" style="width:auto; padding:4px 9px; font-size:10px;" onclick="TGBridge.copyText('${s.contract_address}')">کپی CA</button>
+          <button class="btn btn-teal" style="width:auto; padding:4px 9px; font-size:10px;" onclick="if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">کپی CA</button>
         </div>` : ''
       }
 
@@ -310,18 +340,20 @@ const App = {
       }
     `;
 
-    document.getElementById('bottomSheet').classList.add('show');
-    TGBridge.syncBackButton(true);
+    const sheet = document.getElementById('bottomSheet');
+    if (sheet) sheet.classList.add('show');
+    if (window.TGBridge) TGBridge.syncBackButton(true);
   },
 
   closeBottomSheet() {
-    document.getElementById('bottomSheet').classList.remove('show');
-    TGBridge.syncBackButton(this.state.currentTab !== 'signals');
+    const sheet = document.getElementById('bottomSheet');
+    if (sheet) sheet.classList.remove('show');
+    if (window.TGBridge) TGBridge.syncBackButton(this.state.currentTab !== 'signals');
   },
 
   // ================= تب لیدربورد =================
   setLeaderboardType(type) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.state.leaderboardType = type;
     const btnCallers = document.getElementById('btnLbCallers');
     const btnGivers = document.getElementById('btnLbGivers');
@@ -334,8 +366,7 @@ const App = {
     const listEl = document.getElementById('leaderboardFeedList');
     if (!listEl) return;
 
-    // لود داده‌ها در صورتی که کش موجود نباشد
-    if (!this.state.leaderboardData.callers.length && !this.state.leaderboardData.signal_givers.length) {
+    if (!this.state.leaderboardData || (!this.state.leaderboardData.callers?.length && !this.state.leaderboardData.signal_givers?.length)) {
       listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال بارگذاری رتبه‌بندی...</div>';
       try {
         this.state.leaderboardData = await API.getLeaderboard();
@@ -345,10 +376,10 @@ const App = {
     }
 
     const isCallers = this.state.leaderboardType === 'callers';
-    const rows = isCallers ? this.state.leaderboardData.callers : this.state.leaderboardData.signal_givers;
+    const rows = isCallers ? (this.state.leaderboardData?.callers || []) : (this.state.leaderboardData?.signal_givers || []);
 
     if (!rows || rows.length === 0) {
-      listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">هنوز اطلاعاتی برای ${isCallers ? 'کالرها' : 'سیگنال‌دهندگان'} ثبت نشده است.</div>`;
+      listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">هنوز رتبه‌ای ثبت نشده است.</div>`;
       return;
     }
 
@@ -389,7 +420,7 @@ const App = {
 
   // ================= تب آکادمی =================
   setAcademySubTab(subTab) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.state.academyTab = subTab;
     const btnStrat = document.getElementById('btnAcadStrat');
     const btnArt = document.getElementById('btnAcadArt');
@@ -403,7 +434,7 @@ const App = {
     if (!listEl) return;
 
     if (this.state.academyTab === 'strategies') {
-      if (!this.state.strategies.length) {
+      if (!this.state.strategies || !this.state.strategies.length) {
         listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت ستاپ‌ها...</div>';
         try {
           this.state.strategies = await API.getContent('strategies');
@@ -424,7 +455,7 @@ const App = {
         </div>
       `).join('');
     } else {
-      if (!this.state.articles.length) {
+      if (!this.state.articles || !this.state.articles.length) {
         listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
         try {
           this.state.articles = await API.getContent('articles');
@@ -449,7 +480,7 @@ const App = {
 
   // ================= مدال مدیریت کادر =================
   async openManageStaffModal() {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     document.getElementById('modalTitle').textContent = 'مدیریت ادمین‌ها و نقش‌ها';
     document.getElementById('modalBody').innerHTML = `
       <div style="margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
@@ -507,7 +538,7 @@ const App = {
     const uid = document.getElementById('staffUserId').value.trim();
     const role = document.getElementById('staffRole').value;
     if (!uid || !/^\d+$/.test(uid)) {
-      TGBridge.showAlert('شناسه عددی باید عدد باشد');
+      if (window.TGBridge) TGBridge.showAlert('شناسه عددی باید عدد باشد');
       return;
     }
 
@@ -518,18 +549,24 @@ const App = {
     });
 
     if (resp.ok) {
-      TGBridge.haptic('success');
-      TGBridge.showAlert('نقش با موفقیت اعمال شد');
+      if (window.TGBridge) {
+        TGBridge.haptic('success');
+        TGBridge.showAlert('نقش با موفقیت اعمال شد');
+      }
       await this.loadStaffList();
     } else {
-      TGBridge.haptic('error');
-      TGBridge.showAlert('خطا در ثبت نقش');
+      if (window.TGBridge) {
+        TGBridge.haptic('error');
+        TGBridge.showAlert('خطا در ثبت نقش');
+      }
     }
   },
 
   async removeStaffAction(uid) {
-    const conf = await TGBridge.showConfirm(`آیا از خلع دسترسی کاربر ${uid} مطمئن هستید؟`);
-    if (!conf) return;
+    if (window.TGBridge) {
+      const conf = await TGBridge.showConfirm(`آیا از خلع دسترسی کاربر ${uid} مطمئن هستید؟`);
+      if (!conf) return;
+    }
 
     const resp = await fetch(`/site/staff/${uid}`, {
       method: 'DELETE',
@@ -537,17 +574,19 @@ const App = {
     });
 
     if (resp.ok) {
-      TGBridge.haptic('success');
+      if (window.TGBridge) TGBridge.haptic('success');
       await this.loadStaffList();
     } else {
-      TGBridge.haptic('error');
-      TGBridge.showAlert('امکان حذف این کاربر وجود ندارد');
+      if (window.TGBridge) {
+        TGBridge.haptic('error');
+        TGBridge.showAlert('امکان حذف این کاربر وجود ندارد');
+      }
     }
   },
 
   // ================= مدال ثبت سیگنال =================
   openAddSignalModal() {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     document.getElementById('modalTitle').textContent = 'ثبت سیگنال جدید';
     document.getElementById('modalBody').innerHTML = `
       <div class="field"><label>نماد دارایی (کوین):</label><input id="newCoin" placeholder="مثلاً $PEPE یا SOL"></div>
@@ -567,7 +606,10 @@ const App = {
 
   async submitNewSignal() {
     const coin = document.getElementById('newCoin').value.trim();
-    if (!coin) { TGBridge.showAlert('نماد کوین الزامی است'); return; }
+    if (!coin) {
+      if (window.TGBridge) TGBridge.showAlert('نماد کوین الزامی است');
+      return;
+    }
 
     const payload = {
       coin,
@@ -581,26 +623,28 @@ const App = {
 
     const res = await API.createSignal(payload);
     if (res.ok) {
-      TGBridge.haptic('success');
+      if (window.TGBridge) TGBridge.haptic('success');
       this.closeModal();
       await this.loadSignals();
       this.renderSignalsList();
-      let session = await API.getSession();
+      const session = await API.getSession();
       if (session) {
         this.state.session = session;
         this.updateUserInterface();
       }
     } else {
       const data = await res.json().catch(() => ({}));
-      TGBridge.haptic('error');
-      TGBridge.showAlert(data.error || 'خطا در ثبت سیگنال');
+      if (window.TGBridge) {
+        TGBridge.haptic('error');
+        TGBridge.showAlert(data.error || 'خطا در ثبت سیگنال');
+      }
     }
   },
 
   openUpdateResult(signalId) {
-    TGBridge.haptic('selection');
+    if (window.TGBridge) TGBridge.haptic('selection');
     this.closeBottomSheet();
-    const s = this.state.signals.find(item => item.id === signalId);
+    const s = (this.state.signals || []).find(item => item.id === signalId);
     if (!s) return;
 
     document.getElementById('modalTitle').textContent = `نتیجه برای ${s.coin || ''}`;
@@ -628,34 +672,41 @@ const App = {
 
     const res = await API.updateSignalResult(signalId, result, status);
     if (res.ok) {
-      TGBridge.haptic('success');
+      if (window.TGBridge) TGBridge.haptic('success');
       this.closeModal();
       await this.loadSignals();
       this.renderSignalsList();
     } else {
-      TGBridge.haptic('error');
-      TGBridge.showAlert('خطا در ثبت نتیجه');
+      if (window.TGBridge) {
+        TGBridge.haptic('error');
+        TGBridge.showAlert('خطا در ثبت نتیجه');
+      }
     }
   },
 
   async deleteSignalAction(id) {
-    const conf = await TGBridge.showConfirm('آیا از حذف این سیگنال مطمئن هستید؟');
-    if (!conf) return;
+    if (window.TGBridge) {
+      const conf = await TGBridge.showConfirm('آیا از حذف این سیگنال مطمئن هستید؟');
+      if (!conf) return;
+    }
 
     const resp = await API.deleteSignal(id);
     if (resp.ok) {
-      TGBridge.haptic('success');
+      if (window.TGBridge) TGBridge.haptic('success');
       this.closeBottomSheet();
       await this.loadSignals();
       this.renderSignalsList();
     } else {
-      TGBridge.haptic('error');
-      TGBridge.showAlert('خطا در حذف سیگنال');
+      if (window.TGBridge) {
+        TGBridge.haptic('error');
+        TGBridge.showAlert('خطا در حذف سیگنال');
+      }
     }
   },
 
   closeModal() {
-    document.getElementById('modalOverlay').classList.remove('show');
+    const modal = document.getElementById('modalOverlay');
+    if (modal) modal.classList.remove('show');
   }
 };
 
