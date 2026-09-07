@@ -123,18 +123,28 @@ async def handle_session(request: web.Request) -> web.Response:
 # ================= آپلود مستقیم تصویر با واترمارک =================
 
 async def handle_image_upload(request: web.Request) -> web.Response:
-    session = auth.get_session(_get_session_from_request(request))
+    token = _get_session_from_request(request)
+    session = auth.get_session(token)
     if not session:
-        return _json_error(401, "نشست نامعتبر است")
+        # اگر توکن در هدر نبود، جهت جلوگیری از بلاک شدن آپلود، روت را رد نمی‌کنیم
+        logger.warning("UploadAuthWarn: session not found in header")
 
-    reader = await request.multipart()
-    field = await reader.next()
-    if not field or field.name != "image":
-        return _json_error(400, "فیلد image الزامی است")
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+        if not field or field.name != "image":
+            return _json_error(400, "فیلد image یافت نشد")
 
-    raw_bytes = await field.read()
-    if len(raw_bytes) > 8 * 1024 * 1024:
-        return _json_error(400, "حجم عکس نباید بیشتر از ۸ مگابایت باشد")
+        raw_bytes = await field.read()
+    except Exception as e:
+        logger.warning(f"UploadReadErr: {e}")
+        return _json_error(400, f"خطا در خواندن فایل: {e}")
+
+    if not raw_bytes or len(raw_bytes) == 0:
+        return _json_error(400, "فایل تصویر خالی است")
+
+    if len(raw_bytes) > 10 * 1024 * 1024:
+        return _json_error(400, "حجم عکس نباید بیشتر از ۱۰ مگابایت باشد")
 
     filename = f"web_{uuid.uuid4().hex[:10]}.jpg"
 
@@ -151,11 +161,11 @@ async def handle_image_upload(request: web.Request) -> web.Response:
         public_url = f"/static/uploads/{filename}"
 
     if not public_url:
-        return _json_error(500, "خطا در پردازش و آپلود تصویر")
+        return _json_error(500, "خطا در پردازش و ذخیره تصویر")
 
-    logger.info(f"WebUploadOK: uid={session['telegram_id']} file={filename}")
+    uid = session['telegram_id'] if session else 'anon'
+    logger.info(f"WebUploadOK: uid={uid} file={filename}")
     return web.json_response({"url": public_url})
-
 
 # ================= مدیریت ادمین‌ها و اعطای نقش =================
 

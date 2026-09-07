@@ -29,7 +29,6 @@ const Modals = {
     document.getElementById('modalOverlay').classList.add('show');
   },
 
-  // متد جامع آپلود تصاویر با هندلینگ هم‌زمان سیگنال و هدر مقاله
   async handleImageUpload(input, targetHiddenId, statusElId) {
     const file = input.files[0];
     if (!file) return;
@@ -43,30 +42,41 @@ const Modals = {
     const formData = new FormData();
     formData.append('image', file);
 
+    // استخراج توکن معتبر از سشن جاری یا لوکال استوریج
+    const sess = App.state.session || {};
+    let token = sess.token || localStorage.getItem('ml_token') || '';
+    if (!token) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('memeland_session') || '{}');
+        token = stored.token || '';
+      } catch (e) {}
+    }
+
     try {
       const resp = await fetch('/site/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('ml_token') || ''}`
-        },
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData
       });
 
-      if (!resp.ok) throw new Error('Upload error');
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => ({}));
+        throw new Error(`HTTP ${resp.status}: ${errJson.error || 'Upload error'}`);
+      }
+
       const data = await resp.json();
-      
       document.getElementById(targetHiddenId).value = data.url;
       if (status) {
         status.textContent = '✅ تصویر با موفقیت بارگذاری شد.';
         status.style.color = '#4ade80';
       }
-      if (window.sendRemoteLog) window.sendRemoteLog('IMG_UPLOAD_OK: ' + data.url.split('/').pop());
+      if (window.sendRemoteLog) window.sendRemoteLog('IMG_OK: ' + data.url.split('/').pop());
     } catch(err) {
       if (status) {
         status.textContent = '❌ خطا در آپلود تصویر';
         status.style.color = 'var(--red)';
       }
-      if (window.sendRemoteLog) window.sendRemoteLog('IMG_UPLOAD_ERR: ' + err);
+      if (window.sendRemoteLog) window.sendRemoteLog('IMG_FAIL: ' + err.message);
     }
   },
 
