@@ -1,34 +1,50 @@
 /**
  * Telegram WebApp Native Integration Bridge
+ * نسخه اصلاح‌شده با Getter پویا، فال‌بک کلیپ‌بورد و مهار کامل دکمه بازگشت
  */
+
 const TGBridge = {
-  tg: window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null,
+  // دسترسی پویا به SDK حتی در صورت تاخیر در بارگذاری اولیه
+  get tg() {
+    return window.Telegram?.WebApp || null;
+  },
 
   init() {
-    if (!this.tg) return;
+    const tg = this.tg;
+    if (!tg) return;
 
-    this.tg.ready();
-    this.tg.expand();
+    tg.ready();
+    tg.expand();
 
-    // جلوگیری از بسته‌شدن برنامه با اسکرول عمودی (Bot API 7.7+)
-    if (this.tg.disableVerticalSwipes) {
-      try { this.tg.disableVerticalSwipes(); } catch (e) {}
+    // مهار بسته‌شدن برنامه حین اسکرول عمودی (Bot API 7.7+)
+    if (tg.disableVerticalSwipes) {
+      try { tg.disableVerticalSwipes(); } catch (e) {}
     }
 
     // هماهنگ‌سازی رنگ هدر و پس‌زمینه
-    if (this.tg.setHeaderColor) {
-      try { this.tg.setHeaderColor('#07090e'); } catch (e) {}
+    if (tg.setHeaderColor) {
+      try { tg.setHeaderColor('#07090e'); } catch (e) {}
     }
-    if (this.tg.setBackgroundColor) {
-      try { this.tg.setBackgroundColor('#07090e'); } catch (e) {}
+    if (tg.setBackgroundColor) {
+      try { tg.setBackgroundColor('#07090e'); } catch (e) {}
     }
 
-    // رویداد دکمه برگشت بومی تلگرام
-    if (this.tg.BackButton) {
-      this.tg.BackButton.onClick(() => {
-        if (document.getElementById('bottomSheet').classList.contains('show')) {
+    // مدیریت جامع دکمه بازگشت تلگرام (مودال ⟵ باتم‌شیت ⟵ تب‌ها)
+    if (tg.BackButton) {
+      tg.BackButton.onClick(() => {
+        const modal = document.getElementById('modalOverlay');
+        if (modal && modal.classList.contains('show')) {
+          App.closeModal();
+          return;
+        }
+
+        const sheet = document.getElementById('bottomSheet');
+        if (sheet && sheet.classList.contains('show')) {
           App.closeBottomSheet();
-        } else if (App.state.currentTab !== 'signals') {
+          return;
+        }
+
+        if (App.state && App.state.currentTab !== 'signals') {
           App.switchTab('signals');
         }
       });
@@ -36,30 +52,33 @@ const TGBridge = {
   },
 
   haptic(type = 'light') {
-    if (!this.tg || !this.tg.HapticFeedback) return;
+    const tg = this.tg;
+    if (!tg || !tg.HapticFeedback) return;
     try {
       if (['success', 'error', 'warning'].includes(type)) {
-        this.tg.HapticFeedback.notificationOccurred(type);
+        tg.HapticFeedback.notificationOccurred(type);
       } else if (type === 'selection') {
-        this.tg.HapticFeedback.selectionChanged();
+        tg.HapticFeedback.selectionChanged();
       } else {
-        this.tg.HapticFeedback.impactOccurred(type);
+        tg.HapticFeedback.impactOccurred(type);
       }
     } catch (e) {}
   },
 
   syncBackButton(shouldShow) {
-    if (!this.tg || !this.tg.BackButton) return;
+    const tg = this.tg;
+    if (!tg || !tg.BackButton) return;
     if (shouldShow) {
-      this.tg.BackButton.show();
+      tg.BackButton.show();
     } else {
-      this.tg.BackButton.hide();
+      tg.BackButton.hide();
     }
   },
 
   showAlert(message) {
-    if (this.tg && this.tg.showAlert) {
-      this.tg.showAlert(message);
+    const tg = this.tg;
+    if (tg && tg.showAlert) {
+      tg.showAlert(message);
     } else {
       alert(message);
     }
@@ -67,8 +86,9 @@ const TGBridge = {
 
   showConfirm(message) {
     return new Promise((resolve) => {
-      if (this.tg && this.tg.showConfirm) {
-        this.tg.showConfirm(message, (ok) => resolve(!!ok));
+      const tg = this.tg;
+      if (tg && tg.showConfirm) {
+        tg.showConfirm(message, (ok) => resolve(!!ok));
       } else {
         resolve(confirm(message));
       }
@@ -76,11 +96,36 @@ const TGBridge = {
   },
 
   copyText(text, successMsg = 'کپی شد!') {
+    if (!text) return;
+    
+    // روش استاندارد با فال‌بک متنی برای مرورگرهای قدیمی وب‌ویو
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        this.haptic('success');
-        this.showAlert(successMsg);
-      });
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          this.haptic('success');
+          this.showAlert(successMsg);
+        })
+        .catch(() => this._fallbackCopy(text, successMsg));
+    } else {
+      this._fallbackCopy(text, successMsg);
+    }
+  },
+
+  _fallbackCopy(text, successMsg) {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      this.haptic('success');
+      this.showAlert(successMsg);
+    } catch (err) {
+      this.showAlert('کپی ناموفق بود.');
     }
   }
 };

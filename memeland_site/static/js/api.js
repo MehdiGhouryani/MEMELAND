@@ -1,6 +1,8 @@
 /**
  * API Service & Session Manager
+ * نسخه اصلاح‌شده و پایدار
  */
+
 const API = {
   baseUrl: '/site',
 
@@ -27,12 +29,12 @@ const API = {
       });
       if (!resp.ok) return null;
       const data = await resp.json();
-      if (data.token) {
+      if (data && data.token) {
         localStorage.setItem('mh_session_token', data.token);
       }
       return data;
     } catch (e) {
-      console.error('WebApp Auth Failed:', e);
+      console.warn('WebApp Auth Request Failed:', e);
       return null;
     }
   },
@@ -42,6 +44,10 @@ const API = {
     if (!token) return null;
     try {
       const resp = await fetch(`${this.baseUrl}/session`, { headers: this.getHeaders() });
+      if (resp.status === 401) {
+        localStorage.removeItem('mh_session_token');
+        return null;
+      }
       if (!resp.ok) return null;
       return await resp.json();
     } catch (e) {
@@ -53,48 +59,27 @@ const API = {
     const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    return data.items || [];
+    // پشتیبانی هم‌زمان از ساختار آبجکت یا آرایه خام
+    if (Array.isArray(data)) return data;
+    return (data && data.items) ? data.items : [];
   },
 
   async getLeaderboard() {
-    const resp = await fetch(`${this.baseUrl}/leaderboard?period=week`);
-    return resp.ok ? await resp.json() : { callers: [], signal_givers: [] };
-  },
-
-  async getRatings() {
-    const resp = await fetch(`${this.baseUrl}/ratings/all`);
-    return resp.ok ? await resp.json() : [];
+    try {
+      const resp = await fetch(`${this.baseUrl}/leaderboard?period=week`);
+      return resp.ok ? await resp.json() : { callers: [], signal_givers: [] };
+    } catch (e) {
+      return { callers: [], signal_givers: [] };
+    }
   },
 
   async getContent(key) {
-    const resp = await fetch(`${this.baseUrl}/content/${key}`);
-    return resp.ok ? await resp.json() : [];
-  },
-
-  async setContent(key, data) {
-    return await fetch(`${this.baseUrl}/content/${key}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data)
-    });
-  },
-
-  async claimRole(role, pin) {
-    const resp = await fetch(`${this.baseUrl}/claim-role`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ role, pin })
-    });
-    return resp.ok;
-  },
-
-  async updateProfileName(displayName) {
-    const resp = await fetch(`${this.baseUrl}/profile`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ display_name: displayName })
-    });
-    return resp.ok ? await resp.json() : null;
+    try {
+      const resp = await fetch(`${this.baseUrl}/content/${key}`);
+      return resp.ok ? await resp.json() : [];
+    } catch (e) {
+      return [];
+    }
   },
 
   async createSignal(payload) {
