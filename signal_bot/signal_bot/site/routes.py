@@ -45,9 +45,15 @@ def _get_session_from_request(request: web.Request):
 def _require_admin(request: web.Request):
     token = _get_session_from_request(request)
     session = auth.get_session(token)
-    if not session or not session.get("is_admin"):
-        return None
-    return session
+    if session and session.get("is_admin"):
+        return session
+    
+    # فال‌بک بررسی شناسه ادمین از نشست فعال تلگرام
+    from signal_bot.config.settings import ADMIN_IDS
+    if session and session.get("telegram_id") in ADMIN_IDS:
+        return session
+
+    return None
 
 
 def _require_owner_or_admin(request: web.Request, signal_id: int):

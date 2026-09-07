@@ -152,26 +152,36 @@ const Modals = {
       return;
     }
 
+    // استفاده مستقیم از آبجکت API برای تضمین ارسال هدر معتبر Authorization
+    const headers = (window.API && typeof API.getHeaders === 'function') 
+      ? API.getHeaders() 
+      : {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${App.state.session?.token || localStorage.getItem('ml_token') || ''}`
+        };
+
     try {
       const resp = await fetch('/site/content/articles', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ml_token') || ''}`
-        },
+        headers: headers,
         body: JSON.stringify({ title, body, image })
       });
 
-      if (resp.ok) {
-        if (window.TGBridge) TGBridge.haptic('success');
-        this.closeModal();
-        App.state.articles = [];
-        await Views.renderAcademy();
-      } else {
+      if (!resp.ok) {
         const d = await resp.json().catch(() => ({}));
+        if (window.sendRemoteLog) window.sendRemoteLog(`ART_PUB_ERR: HTTP ${resp.status} - ${d.error || 'unknown'}`);
         if (window.TGBridge) TGBridge.showAlert(d.error || 'خطا در ثبت مقاله');
+        return;
       }
+
+      if (window.TGBridge) TGBridge.haptic('success');
+      if (window.sendRemoteLog) window.sendRemoteLog(`ART_PUB_OK: ${title.slice(0, 15)}`);
+      
+      this.closeModal();
+      App.state.articles = [];
+      await Views.renderAcademy();
     } catch (e) {
+      if (window.sendRemoteLog) window.sendRemoteLog(`ART_PUB_CATCH: ${e.message}`);
       if (window.TGBridge) TGBridge.showAlert('خطا در برقراری ارتباط');
     }
   },
