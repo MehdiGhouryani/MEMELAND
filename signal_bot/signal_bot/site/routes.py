@@ -81,6 +81,16 @@ async def handle_index(request: web.Request) -> web.Response:
     )
 
 
+async def handle_client_log(request: web.Request) -> web.Response:
+    """دریافت فوری خطاهای کلاینت و رندر فرانت‌اند برای ثبت در لاگ متمرکز سرور"""
+    try:
+        data = await request.json()
+        logger.info(f"[JS] {data.get('msg')}")
+    except Exception:
+        pass
+    return web.json_response({"ok": True})
+
+
 async def handle_webapp_auth(request: web.Request) -> web.Response:
     from signal_bot.config import settings
 
@@ -105,7 +115,7 @@ async def handle_session(request: web.Request) -> web.Response:
     session = auth.get_session(token)
     if not session:
         return _json_error(401, "نشست نامعتبر است یا منقضی شده")
-    logger.info(f"SessCheck: uid={session['telegram_id']} adm={session['is_admin']}")
+    logger.info(f"SessOK: uid={session['telegram_id']} adm={session['is_admin']}")
     return web.json_response(session)
 
 
@@ -302,6 +312,8 @@ def register(app: web.Application):
     if os.path.exists(_STATIC_DIR):
         app.router.add_static("/static/", _STATIC_DIR, name="static")
 
+    # روت‌های کلاینت لاگر و احراز هویت
+    app.router.add_post("/site/client-log", handle_client_log)
     app.router.add_post("/webapp-auth", handle_webapp_auth)
     app.router.add_post("/site/webapp-auth", handle_webapp_auth)
     app.router.add_get("/site/session", handle_session)

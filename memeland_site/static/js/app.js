@@ -1,6 +1,18 @@
 /**
- * MemeLand Core Controller (Ultra-Lightweight v5.8.0)
+ * MemeLand Core Controller (Ultra-Lightweight & Diagnosed v5.9.0)
  */
+
+window.sendRemoteLog = function(msg) {
+  fetch('/site/client-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg: msg })
+  }).catch(() => {});
+};
+
+window.addEventListener('error', function(e) {
+  window.sendRemoteLog(`JS-ERR: ${e.message} @ line ${e.lineno}`);
+});
 
 const App = {
   state: {
@@ -28,12 +40,18 @@ const App = {
       try {
         session = await API.authenticateWebApp();
         if (!session) session = await API.getSession();
-      } catch (e) {}
+      } catch (e) {
+        window.sendRemoteLog(`AuthFail: ${e}`);
+      }
       this.state.session = session;
 
       await this.loadSignals();
       this.updateUserInterface();
       Views.renderCurrent();
+
+      // ارسال تله‌متری اولیه به سرور برای اطمینان از وضعیت
+      const isSvgReady = Boolean(document.querySelector('#avatarSvgContainer svg'));
+      window.sendRemoteLog(`BOOT: uid=${session?.telegram_id || 'none'} is_adm=${session?.is_admin} hasSvg=${isSvgReady} hasRenderer=${Boolean(window.AvatarRenderer)}`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
@@ -49,7 +67,7 @@ const App = {
         });
       }
     } catch (err) {
-      console.error('Init error:', err);
+      window.sendRemoteLog(`InitCatch: ${err}`);
     } finally {
       clearTimeout(safetyTimer);
       setTimeout(() => this.hideSplash(), 300);
@@ -94,21 +112,15 @@ const App = {
     const username = s?.username || s?.user?.username || tgUser?.username || null;
     const quota = s?.quota || null;
 
-    // تشخیص قاطع وضعیت ادمین از روی سشن یا دیتابیس
+    // تشخیص دقیق وضعیت ادمین
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
-    // انتخاب تم آواتار: اولویت قطعی با سوپرادمین و ادمین
     let roleKey = 'rookie';
-    if (isSuper) {
-      roleKey = 'super_admin';
-    } else if (isAdmin) {
-      roleKey = 'admin';
-    } else if (quota?.role_key && quota.role_key !== 'rookie') {
-      roleKey = quota.role_key;
-    }
+    if (isSuper) roleKey = 'super_admin';
+    else if (isAdmin) roleKey = 'admin';
+    else if (quota?.role_key && quota.role_key !== 'rookie') roleKey = quota.role_key;
 
-    // رندر SVG و بج نئونی
     if (avatarContainer && window.AvatarRenderer) {
       avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
     }
@@ -127,7 +139,6 @@ const App = {
       if (profileRole) profileRole.textContent = quota?.display_role || (isAdmin ? '👑 مدیر ارشد' : 'عضو رسمی');
       if (profileQuota) profileQuota.textContent = `${quota?.signals_today || 0} از ${quota?.daily_limit || (isAdmin ? 999 : 5)} مصرف شده`;
 
-      // نمایش قطعی پنل و دکمه‌های ادمین
       if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
       if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
       if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';

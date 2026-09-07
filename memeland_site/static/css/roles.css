@@ -5,14 +5,14 @@
 /* کانتینر اصلی آواتار پروفایل */
 .avatar-frame {
   position: relative;
-  width: 76px;
-  height: 76px;
-  min-width: 76px;
-  min-height: 76px;
+  width: 76px !important;
+  height: 76px !important;
+  min-width: 76px !important;
+  min-height: 76px !important;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: #11141d;
   flex-shrink: 0;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -34,8 +34,8 @@
 #avatarSvgContainer svg {
   width: 100% !important;
   height: 100% !important;
-  min-width: 60px;
-  min-height: 60px;
+  min-width: 60px !important;
+  min-height: 60px !important;
   display: block !important;
   border-radius: 50%;
 }
