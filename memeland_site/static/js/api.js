@@ -1,10 +1,15 @@
 /**
- * MemeLand API Service & Session Manager (v7.0.0)
- * هماهنگ با چندلایه احراز هویت تلگرام و توکن‌های نشست
+ * MemeLand API Service & Session Manager (v7.1.0 - Smart Diagnostic & Multi-Route Auth)
  */
 
 const API = {
   baseUrl: '/site',
+
+  log(msg) {
+    if (window.sendRemoteLog) {
+      window.sendRemoteLog(`[API] ${msg}`);
+    }
+  },
 
   getToken() {
     return localStorage.getItem('mh_session_token') || 
@@ -52,53 +57,67 @@ const API = {
   async authenticateWebApp() {
     const tg = window.Telegram?.WebApp;
     const initData = tg?.initData || '';
+    const uid = tg?.initDataUnsafe?.user?.id || 'none';
 
     if (!initData) {
+      this.log(`AuthSkip: initData empty (uid=${uid})`);
       return await this.getSession();
     }
 
-    try {
-      let resp = await fetch('/webapp-auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: initData })
-      });
+    // مسیرهای محتمل بک‌اند به ترتیب اولویت
+    const endpoints = ['/site/auth', '/site/webapp-auth', '/webapp-auth'];
+    let authData = null;
+    let lastStatus = 0;
 
-      if (!resp.ok) {
-        resp = await fetch(`${this.baseUrl}/webapp-auth`, {
+    for (const url of endpoints) {
+      try {
+        const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ init_data: initData })
         });
+        lastStatus = resp.status;
+        if (resp.ok) {
+          authData = await resp.json();
+          this.log(`AuthSuccess: endpoint=${url} uid=${authData.telegram_id || uid} adm=${Boolean(authData.is_admin)}`);
+          break;
+        }
+      } catch (err) {
+        // ادامه تست روت بعدی در صورت بروز خطای شبکه
       }
-
-      if (!resp.ok) return null;
-
-      const data = await resp.json();
-      if (data && data.token) {
-        this.setToken(data.token);
-      }
-      return data;
-    } catch (e) {
-      console.warn('WebApp Auth Request Failed:', e);
-      return null;
     }
+
+    if (authData && authData.token) {
+      this.setToken(authData.token);
+      return authData;
+    }
+
+    this.log(`AuthFailed: All routes failed. LastHTTP=${lastStatus}`);
+    return await this.getSession();
   },
 
   async getSession() {
+    const token = this.getToken();
+    const headers = this.getHeaders();
     try {
-      const resp = await fetch(`${this.baseUrl}/session`, { headers: this.getHeaders() });
+      const resp = await fetch(`${this.baseUrl}/session`, { headers });
       if (resp.status === 401) {
         this.clearToken();
+        this.log('SessExpired: HTTP 401');
         return null;
       }
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        this.log(`SessFailed: HTTP ${resp.status}`);
+        return null;
+      }
       const data = await resp.json();
       if (data && data.token) {
         this.setToken(data.token);
       }
+      this.log(`SessActive: uid=${data.telegram_id} adm=${Boolean(data.is_admin)}`);
       return data;
     } catch (e) {
+      this.log(`SessNetErr: ${e.message}`);
       return null;
     }
   },
@@ -106,11 +125,16 @@ const API = {
   async getSignals() {
     try {
       const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
-      if (!resp.ok) return [];
+      if (!resp.ok) {
+        this.log(`SignalsErr: HTTP ${resp.status}`);
+        return [];
+      }
       const data = await resp.json();
-      if (Array.isArray(data)) return data;
-      return (data && data.items) ? data.items : [];
+      const items = Array.isArray(data) ? data : (data && data.items ? data.items : (data.signals || []));
+      this.log(`SignalsLoaded: count=${items.length}`);
+      return items;
     } catch (e) {
+      this.log(`SignalsNetErr: ${e.message}`);
       return [];
     }
   },

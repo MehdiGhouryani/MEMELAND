@@ -1,5 +1,5 @@
 /**
- * MemeLand Views & Feed Renderer (v7.0.0 - Native Dock & Fluid Micro-Interactions)
+ * MemeLand Views & Feed Renderer (v7.1.0 - Robust Filtering & Diagnostic Logs)
  */
 
 const Views = {
@@ -23,7 +23,7 @@ const Views = {
       } else {
         window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
       }
-    } else if (window.TGBridge) {
+    } else if (window.TGBridge && typeof TGBridge.haptic === 'function') {
       TGBridge.haptic(type);
     }
   },
@@ -34,15 +34,28 @@ const Views = {
     if (!listEl) return;
 
     const isClosed = App.state.signalSubTab === 'closed';
+    const allSignals = App.state.signals || [];
 
-    const list = (App.state.signals || []).filter(s => {
+    // فیلتر منعطف بر اساس وضعیت‌های مختلف ثبت‌شده در دیتابیس (open/active/closed/win/loss)
+    const list = allSignals.filter(s => {
+      const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
-        ? (s.outcome_status === 'win' || s.outcome_status === 'loss')
-        : (s.outcome_status === 'open');
-      const matchCat = App.state.category === 'all' || s.channel === App.state.category;
-      const matchSearch = !App.state.searchQuery || (s.coin && s.coin.toLowerCase().includes(App.state.searchQuery.toLowerCase()));
+        ? (rawStatus === 'win' || rawStatus === 'loss' || rawStatus === 'closed')
+        : (rawStatus === 'open' || rawStatus === 'active');
+
+      const rawChannel = String(s.channel || s.category || 'dex').toLowerCase();
+      const matchCat = App.state.category === 'all' || rawChannel === App.state.category;
+
+      const coinName = String(s.coin || s.symbol || s.name || '').toLowerCase();
+      const matchSearch = !App.state.searchQuery || coinName.includes(App.state.searchQuery.toLowerCase());
+
       return matchStatus && matchCat && matchSearch;
     });
+
+    // لاگ تشخیصی برای مانیتورینگ تعداد سیگنال‌ها در ترمینال سرور
+    if (window.sendRemoteLog) {
+      window.sendRemoteLog(`[VIEW] Render: tab=${App.state.signalSubTab}, cat=${App.state.category}, total=${allSignals.length}, filtered=${list.length}`);
+    }
 
     if (list.length === 0) {
       listEl.innerHTML = `
@@ -55,13 +68,17 @@ const Views = {
     }
 
     listEl.innerHTML = list.map(s => {
-      const roiClass = s.outcome_status === 'win' ? 'roi-win' : (s.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
-      const roiText = s.result ? s.result : (s.outcome_status === 'open' ? 'در حال معامله' : '—');
-      const caller = s.caller_name || s.owner_first_name || 'آلفا';
+      const statusKey = String(s.outcome_status || s.status || 'open').toLowerCase();
+      const roiClass = statusKey === 'win' ? 'roi-win' : (statusKey === 'loss' ? 'roi-loss' : 'roi-open');
+      const roiText = s.result ? s.result : (statusKey === 'open' || statusKey === 'active' ? 'در حال معامله' : '—');
+      const caller = s.caller_name || s.owner_first_name || 'تیم تحلیلی';
       const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
+      const coinTitle = s.coin || s.symbol || '—';
+      const channelTitle = (s.channel || s.category || 'DEX').toUpperCase();
+      const contractAddr = s.contract_address || s.ca || null;
 
-      const caPart = s.contract_address
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
+      const caPart = contractAddr
+        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${contractAddr}')">📋 ${contractAddr.slice(0, 4)}...${contractAddr.slice(-4)}</span>`
         : '';
 
       const callerPart = callerId
@@ -72,8 +89,8 @@ const Views = {
         <div class="card-atomic" onclick="Views.openSignalDetails(${s.id})">
           <div class="card-atomic-top">
             <div class="token-meta">
-              <span class="token-name">${s.coin || '—'}</span>
-              <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
+              <span class="token-name">${coinTitle}</span>
+              <span class="badge-chain">${channelTitle}</span>
               ${s.tier === 'vip' ? '<span class="badge-vip">VIP</span>' : ''}
             </div>
             <div class="roi-badge ${roiClass}">${roiText}</div>
@@ -103,35 +120,41 @@ const Views = {
     const s = (App.state.signals || []).find(item => item.id === signalId);
     if (!s) return;
 
-    const isAdmin = Boolean(App.state.session && (App.state.session.role === 'admin' || App.state.session.is_admin === true));
+    const session = App.state.session;
+    const isAdmin = Boolean(session && (session.role === 'admin' || session.is_admin === true || session.is_super_admin === true));
     const body = document.getElementById('sheetContent');
     if (!body) return;
 
-    // بارگذاری جزئیات در شیت (خلوت و بدون دکمه‌های حجیم مزاحم)
+    const coinTitle = s.coin || s.symbol || '—';
+    const channelTitle = (s.channel || s.category || 'DEX').toUpperCase();
+    const contractAddr = s.contract_address || s.ca || null;
+    const buyLink = s.buy_link || s.link || null;
+    const chartImg = s.before_img || s.image || null;
+
     body.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <h3 style="font-size:17px; font-weight:700;">${s.coin || '—'}</h3>
-        <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
+        <h3 style="font-size:17px; font-weight:700;">${coinTitle}</h3>
+        <span class="badge-chain">${channelTitle}</span>
       </div>
       
-      ${s.before_img ? `
+      ${chartImg ? `
         <div style="margin-bottom:14px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); background:var(--bg);">
-          <img src="${s.before_img}" style="width:100%; display:block; max-height:260px; object-fit:cover;" alt="Chart">
+          <img src="${chartImg}" style="width:100%; display:block; max-height:260px; object-fit:cover;" alt="Chart">
         </div>` : ''
       }
 
-      ${s.contract_address ? `
+      ${contractAddr ? `
         <div style="background:var(--bg); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:12px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="mono" style="color:var(--text); word-break:break-all; font-size:11px;">${s.contract_address}</span>
-          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px; margin-right:8px;" onclick="Views.copyContract('${s.contract_address}')">کپی</button>
+          <span class="mono" style="color:var(--text); word-break:break-all; font-size:11px;">${contractAddr}</span>
+          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px; margin-right:8px;" onclick="Views.copyContract('${contractAddr}')">کپی</button>
         </div>` : ''
       }
 
       ${s.note ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${s.note}</p>` : ''}
 
-      <!-- فال‌بک مرورگرهای دسکتاپ خارج از تلگرام -->
-      ${(!window.Telegram?.WebApp?.initData && s.buy_link) ? `
-        <a href="${s.buy_link}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
+      <!-- دکمه فال‌بک مرورگر دسکتاپ خارج از تلگرام -->
+      ${(!window.Telegram?.WebApp?.initData && buyLink) ? `
+        <a href="${buyLink}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
       ` : ''}
 
       ${isAdmin ? `
@@ -148,14 +171,14 @@ const Views = {
 
     // اتصال اکشن‌ها به داک بومی تلگرام (MainButton و SecondaryButton)
     if (window.TGBridge && typeof TGBridge.showDockActions === 'function') {
-      const mainText = s.buy_link ? 'خرید مستقیم در صرافی ↗' : (s.contract_address ? 'کپی آدرس کانترکت (CA)' : null);
-      const onMainClick = s.buy_link 
-        ? () => TGBridge.openLink(s.buy_link)
-        : (s.contract_address ? () => Views.copyContract(s.contract_address) : null);
+      const mainText = buyLink ? 'خرید مستقیم در صرافی ↗' : (contractAddr ? 'کپی آدرس کانترکت (CA)' : null);
+      const onMainClick = buyLink 
+        ? () => TGBridge.openLink(buyLink)
+        : (contractAddr ? () => Views.copyContract(contractAddr) : null);
 
-      const secondaryText = (s.buy_link && s.contract_address) ? 'کپی آدرس کانترکت (CA)' : null;
-      const onSecondaryClick = (s.buy_link && s.contract_address) 
-        ? () => Views.copyContract(s.contract_address) 
+      const secondaryText = (buyLink && contractAddr) ? 'کپی آدرس کانترکت (CA)' : null;
+      const onSecondaryClick = (buyLink && contractAddr) 
+        ? () => Views.copyContract(contractAddr) 
         : null;
 
       if (mainText) {
@@ -170,7 +193,6 @@ const Views = {
     const sheet = document.getElementById('bottomSheet');
     if (sheet) sheet.classList.remove('show');
 
-    // مخفی‌سازی داک بومی تلگرام و بازیابی دکمه بازگشت
     if (window.TGBridge) {
       TGBridge.syncBackButton(App.state.currentTab !== 'signals');
       if (typeof TGBridge.hideDockActions === 'function') {
@@ -246,7 +268,7 @@ const Views = {
     }
   },
 
-  // ================= تب آکادمی با مقالات هدر تصاویری =================
+  // ================= تب آکادمی =================
   setAcademySubTab(subTab) {
     this.haptic('selection');
     App.state.academyTab = subTab;
@@ -261,7 +283,8 @@ const Views = {
     const listEl = document.getElementById('academyFeedList');
     if (!listEl) return;
 
-    const isAdmin = Boolean(App.state.session && (App.state.session.role === 'admin' || App.state.session.is_admin === true));
+    const session = App.state.session;
+    const isAdmin = Boolean(session && (session.role === 'admin' || session.is_admin === true || session.is_super_admin === true));
 
     if (App.state.academyTab === 'strategies') {
       if (!App.state.strategies || !App.state.strategies.length) {

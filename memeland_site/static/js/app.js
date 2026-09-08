@@ -1,5 +1,5 @@
 /**
- * MemeLand Core Controller (v7.0.0 - Stealth Design & Resilient Lifecycle)
+ * MemeLand Core Controller (v7.1.0 - Resilient Session & Role Fallback)
  */
 
 window.sendRemoteLog = function(msg) {
@@ -13,7 +13,7 @@ window.sendRemoteLog = function(msg) {
   } catch (e) {}
 };
 
-// دریافت هوشمند تمامی خطاهای ران‌تایم و پرامیس‌های ناموفق
+// لاگ هوشمند خطاها
 window.addEventListener('error', function(e) {
   window.sendRemoteLog(`JSERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
 });
@@ -60,7 +60,7 @@ const App = {
     }
     this.startSplashTicker();
     
-    // تایمر ایمنی جهت تضمین عدم گیر کردن اسپلش در صورت کندی اینترنت
+    // تایمر محافظ برای برداشتن قطعی اسپلش
     const safetyTimer = setTimeout(() => this.hideSplash(), 2200);
 
     try {
@@ -73,19 +73,23 @@ const App = {
           session = await API.getSession();
         }
       } catch (e) {
-        console.warn('Session init notice:', e);
+        window.sendRemoteLog(`[APP] AuthErr: ${e.message || e}`);
       }
       this.state.session = session;
 
+      // دریافت سیگنال‌ها
       await this.loadSignals();
+
+      // همگام‌سازی و رندر رابط کاربری
       this.updateUserInterface();
 
       if (window.Views && typeof Views.renderCurrent === 'function') {
         Views.renderCurrent();
       }
 
-      // لاگ موفقیت اجرای کل اپ
-      window.sendRemoteLog(`APP: Ready (uid=${session?.telegram_id || 'guest'}, adm=${Boolean(session?.is_admin)})`);
+      const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+      const isAdm = Boolean(session?.is_admin || session?.is_super_admin);
+      window.sendRemoteLog(`APP: Ready (sessUid=${session?.telegram_id || 'none'}, tgUid=${tgUid || 'none'}, adm=${isAdm}, sigCount=${this.state.signals.length})`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
@@ -150,10 +154,10 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
+    // تشخیص قاطع ادمین
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
-    // تعیین دقیق کلید تم نقش با حفظ دسترسی‌های VIP Helper و سطوح مختلف
     let roleKey = 'rookie';
     if (isSuper) {
       roleKey = 'super_admin';
@@ -184,9 +188,17 @@ const App = {
     if (profileName) profileName.textContent = displayName;
     if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
     if (profileId) profileId.textContent = tid ? String(tid) : '—';
-    if (profileRole) profileRole.textContent = quota?.display_role || (isAdmin ? '👑 مدیر ارشد' : 'عضو رسمی');
-    if (profileQuota) profileQuota.textContent = `${quota?.signals_today || 0} از ${quota?.daily_limit || (isAdmin ? 999 : 5)} مصرف شده`;
+    
+    // عنوان نقش و سهمیه
+    const displayRole = quota?.display_role || (isSuper ? '👑 Super Admin' : (isAdmin ? '💎 مدیر سیستم' : 'عضو رسمی'));
+    if (profileRole) profileRole.textContent = displayRole;
+    if (profileQuota) {
+      const consumed = quota?.signals_today || 0;
+      const total = quota?.daily_limit || (isAdmin ? 999 : 5);
+      profileQuota.textContent = `${consumed} از ${total} مصرف شده`;
+    }
 
+    // نمایش پنل‌های ادمین
     if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
     if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
     if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
@@ -196,7 +208,6 @@ const App = {
     this.haptic('selection');
     this.state.currentTab = tabName;
 
-    // بستن خودکار هرگونه شیت باز هنگام جابجایی تب جهت ممانعت از شناور ماندن دکمه‌های تلگرام
     if (window.Views && typeof Views.closeBottomSheet === 'function') {
       Views.closeBottomSheet();
     }
