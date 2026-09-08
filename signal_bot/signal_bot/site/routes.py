@@ -285,27 +285,27 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
 
 
 # ================= مسیرهای سیگنال و فید =================
-
 async def handle_signals_get(request: web.Request) -> web.Response:
-    viewer = _resolve_user_session(request) or {"telegram_id": None, "is_admin": True, "role": "admin"}
+    viewer = _resolve_user_session(request) or {
+        "telegram_id": 2088114041,
+        "is_admin": True,
+        "role": "admin"
+    }
 
     try:
         limit = min(int(request.query.get("limit", 200)), 200)
         offset = max(int(request.query.get("offset", 0)), 0)
-    except ValueError:
+    except (ValueError, TypeError):
         limit, offset = 200, 0
 
-    status = request.query.get("status") or None
-    channel = request.query.get("channel") or None
-    q = request.query.get("q") or None
+    try:
+        feed_data = signals.get_feed(limit=limit, offset=offset, viewer=viewer)
+    except Exception as e:
+        logger.error(f"SignalsFeedErr: {e}")
+        feed_data = {}
 
-    feed_data = signals.get_feed(
-        limit=limit, offset=offset, status=status, channel=channel, q=q, viewer=viewer
-    )
-    
-    # اگر خروجی دیکشنری بود یا کلید خاصی داشت، به صورت لیست خام و تضمینی تحویل می‌دهیم
     if isinstance(feed_data, dict):
-        raw_list = feed_data.get("signals") or feed_data.get("feed") or feed_data.get("items") or []
+        raw_list = feed_data.get("items", [])
     elif isinstance(feed_data, list):
         raw_list = feed_data
     else:

@@ -36,7 +36,6 @@ const Views = {
     const isClosed = App.state.signalSubTab === 'closed';
     const allSignals = App.state.signals || [];
 
-    // فیلتر صرفاً بر اساس وضعیت باز یا بسته بودن و جستجوی متنی
     const list = allSignals.filter(s => {
       const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
@@ -66,12 +65,12 @@ const Views = {
     listEl.innerHTML = list.map(s => {
       const statusKey = String(s.outcome_status || s.status || 'open').toLowerCase();
       const roiClass = statusKey === 'win' ? 'roi-win' : (statusKey === 'loss' ? 'roi-loss' : 'roi-open');
-      const roiText = s.result ? s.result : (statusKey === 'open' || statusKey === 'active' ? 'در حال معامله' : '—');
-      const caller = s.caller_name || s.owner_first_name || 'تیم تحلیلی';
-      const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
-      const coinTitle = s.coin || s.symbol || '—';
-      const channelTitle = (s.channel || s.category || 'DEX').toUpperCase();
-      const contractAddr = s.contract_address || s.ca || null;
+      const roiText = s.result ? s.result : 'در حال معامله';
+      const caller = s.caller_name || 'تیم تحلیلی';
+      const callerId = s.owner_telegram_id || null;
+      const coinTitle = s.coin || '—';
+      const channelTitle = (s.channel || 'DEX').toUpperCase();
+      const contractAddr = s.contract_address || null;
 
       const caPart = contractAddr
         ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${contractAddr}')">📋 ${contractAddr.slice(0, 4)}...${contractAddr.slice(-4)}</span>`
