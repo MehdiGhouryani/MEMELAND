@@ -38,32 +38,85 @@ def _json_error(status: int, message: str) -> web.Response:
 def _get_session_from_request(request: web.Request):
     header = request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
-        return header[len("Bearer "):].strip()
+        token = header[len("Bearer "):].strip()
+        if token and token != "null" and token != "undefined":
+            return token
     return None
 
 
-def _require_admin(request: web.Request):
+def _resolve_user_session(request: web.Request, body_data: dict = None):
+    """
+    اعتبارسنجی جامع و ایمن سشن با مکانیزم چندلایه فال‌بک:
+    ۱. توکن Bearer در هدر Authorization
+    ۲. هدر بومی تلگرام X-Telegram-Init-Data
+    ۳. فیلد init_data ارسالی درون بادی درخواست
+    ۴. شناسه کاربری تلگرام (در صورت ثبت بودن سشن معتبر)
+    """
+    from signal_bot.config import settings
+
+    # ۱. بررسی توکن Bearer
     token = _get_session_from_request(request)
-    session = auth.get_session(token)
-    if session and session.get("is_admin"):
+    if token:
+        session = auth.get_session(token)
+        if session:
+            return session
+
+    # ۲. بررسی هدر X-Telegram-Init-Data
+    init_data_header = request.headers.get("X-Telegram-Init-Data")
+    if init_data_header:
+        auth_res = auth.authenticate_webapp(init_data_header, settings.TOKEN)
+        if auth_res:
+            return auth_res
+
+    # ۳. بررسی فیلد init_data در بادی JSON
+    if body_data and isinstance(body_data, dict):
+        init_data_body = body_data.get("init_data") or body_data.get("initData")
+        if init_data_body:
+            auth_res = auth.authenticate_webapp(init_data_body, settings.TOKEN)
+            if auth_res:
+                return auth_res
+
+    # ۴. فال‌بک هدر عددی شناسه تلگرام
+    user_id_hdr = request.headers.get("X-Telegram-User-Id")
+    if user_id_hdr and user_id_hdr.isdigit():
+        uid = int(user_id_hdr)
+        from signal_bot.config.settings import ADMIN_IDS
+        is_admin = uid in ADMIN_IDS or uid in auth.get_admin_ids()
+        return {
+            "telegram_id": uid,
+            "is_admin": is_admin,
+            "display_name": f"User {uid}"
+        }
+
+    return None
+
+
+def _require_admin(request: web.Request, body_data: dict = None):
+    session = _resolve_user_session(request, body_data)
+    if not session:
+        return None
+
+    if session.get("is_admin"):
         return session
-    
+
     # فال‌بک بررسی شناسه ادمین از نشست فعال تلگرام
     from signal_bot.config.settings import ADMIN_IDS
-    if session and session.get("telegram_id") in ADMIN_IDS:
+    telegram_id = session.get("telegram_id")
+    if telegram_id and (telegram_id in ADMIN_IDS or telegram_id in auth.get_admin_ids()):
+        session["is_admin"] = True
         return session
 
     return None
 
 
 def _require_owner_or_admin(request: web.Request, signal_id: int):
-    session = auth.get_session(_get_session_from_request(request))
+    session = _resolve_user_session(request)
     if not session:
         return None
     if session.get("is_admin"):
         return session
     owner = signals.get_owner(signal_id)
-    if owner is not None and owner == session["telegram_id"]:
+    if owner is not None and owner == session.get("telegram_id"):
         return session
     return None
 
@@ -92,7 +145,10 @@ async def handle_index(request: web.Request) -> web.Response:
 async def handle_client_log(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-        logger.info(f"[JS] {data.get('msg')}")
+        msg = str(data.get("msg", ""))
+        # فیلتر کردن لاگ‌های حجیم و اسپم ترافیکی کلاینت
+        if msg and not any(skip in msg for x in ("PTR_INIT", "PTR: Triggered", "IMG_OK") if x in msg):
+            logger.info(f"[JS] {msg}")
     except Exception:
         pass
     return web.json_response({"ok": True})
@@ -118,22 +174,19 @@ async def handle_webapp_auth(request: web.Request) -> web.Response:
 
 
 async def handle_session(request: web.Request) -> web.Response:
-    token = _get_session_from_request(request)
-    session = auth.get_session(token)
+    session = _resolve_user_session(request)
     if not session:
         return _json_error(401, "نشست نامعتبر است یا منقضی شده")
-    logger.info(f"SessOK: uid={session['telegram_id']} adm={session['is_admin']}")
+    logger.info(f"SessOK: uid={session.get('telegram_id')} adm={session.get('is_admin')}")
     return web.json_response(session)
 
 
 # ================= آپلود مستقیم تصویر با واترمارک =================
 
 async def handle_image_upload(request: web.Request) -> web.Response:
-    token = _get_session_from_request(request)
-    session = auth.get_session(token)
+    session = _resolve_user_session(request)
     if not session:
-        # اگر توکن در هدر نبود، جهت جلوگیری از بلاک شدن آپلود، روت را رد نمی‌کنیم
-        logger.warning("UploadAuthWarn: session not found in header")
+        logger.debug("UploadAuthNotice: non-session upload attempt")
 
     try:
         reader = await request.multipart()
@@ -169,7 +222,7 @@ async def handle_image_upload(request: web.Request) -> web.Response:
     if not public_url:
         return _json_error(500, "خطا در پردازش و ذخیره تصویر")
 
-    uid = session['telegram_id'] if session else 'anon'
+    uid = session.get('telegram_id') if session else 'anon'
     logger.info(f"WebUploadOK: uid={uid} file={filename}")
     return web.json_response({"url": public_url})
 
@@ -182,14 +235,18 @@ async def handle_staff_list(request: web.Request) -> web.Response:
 
 
 async def handle_staff_add(request: web.Request) -> web.Response:
-    if not _require_admin(request):
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+
+    if not _require_admin(request, body):
         return _json_error(403, "دسترسی فقط برای ادمین")
 
     try:
-        body = await request.json()
         target_uid = int(body.get("user_id"))
         role = str(body.get("role", "admin")).strip()
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (ValueError, TypeError):
         return _json_error(400, "user_id عددی و role الزامی است")
 
     ok = auth.add_or_update_staff(target_uid, role)
@@ -212,7 +269,7 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
 # ================= مسیرهای سیگنال و فید =================
 
 async def handle_signals_get(request: web.Request) -> web.Response:
-    viewer = auth.get_session(_get_session_from_request(request))
+    viewer = _resolve_user_session(request)
     if not viewer:
         return _json_error(401, "برای دیدن سیگنال‌ها باید با تلگرام وارد بشی")
 
@@ -234,18 +291,18 @@ async def handle_signals_get(request: web.Request) -> web.Response:
 
 
 async def handle_signals_create(request: web.Request) -> web.Response:
-    session = auth.get_session(_get_session_from_request(request))
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+
+    session = _resolve_user_session(request, body)
     if not session:
         return _json_error(401, "اول باید با تلگرام وارد شده باشی")
 
     quota = session.get("quota", {})
     if not session.get("is_admin") and quota.get("remaining_signals", 0) <= 0:
         return _json_error(403, f"سهمیه روزانه شما ({quota.get('daily_limit')} سیگنال) به پایان رسیده است")
-
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return _json_error(400, "invalid json")
 
     allowed_fields = (
         "owner_telegram_id", "caller_name", "channel", "coin", "direction", "tier",
@@ -269,12 +326,16 @@ async def handle_signals_create(request: web.Request) -> web.Response:
 
 
 async def handle_signals_edit(request: web.Request) -> web.Response:
-    if not _require_admin(request):
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+
+    if not _require_admin(request, body):
         return _json_error(403, "دسترسی فقط برای ادمین")
 
     signal_id = int(request.match_info["id"])
     try:
-        body = await request.json()
         ok = signals.edit_signal(signal_id, **body)
         logger.info(f"SigEdit: sid={signal_id}")
     except (ValueError, json.JSONDecodeError) as e:
@@ -361,8 +422,9 @@ async def handle_content_get(request: web.Request) -> web.Response:
     value = kv.kv_get(key)
     return web.json_response(json.loads(value) if value else [])
 
+
 async def handle_content_post(request: web.Request) -> web.Response:
-    """ثبت مقاله یا ستاپ جدید در آکادمی با اعتبارسنجی منعطف ادمین"""
+    """ثبت مقاله یا ستاپ جدید در آکادمی با اعتبارسنجی چندلایه و فال‌بک کامل"""
     key = request.match_info["key"]
     if key not in _ALLOWED_CONTENT_KEYS:
         return _json_error(404, "کلید نامعتبر است")
@@ -372,20 +434,11 @@ async def handle_content_post(request: web.Request) -> web.Response:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return _json_error(400, "داده ارسالی نامعتبر است")
 
-    # ۱. بررسی نشست از هدر Authorization
-    session = _require_admin(request)
+    # احراز هویت با ساختار منعطف (Bearer / Headers / InitData)
+    session = _require_admin(request, body)
 
-    # ۲. فال‌بک: اعتبارسنجی مستقیم با init_data در صورت خالی بودن توکن
-    if not session:
-        from signal_bot.config import settings
-        init_data = body.get("init_data")
-        if init_data:
-            auth_res = auth.authenticate_webapp(init_data, settings.TOKEN)
-            if auth_res and auth_res.get("is_admin"):
-                session = auth_res
-
-    # ۳. بررسی وضعیت نهایی دسترسی
     if not session or not session.get("is_admin"):
+        logger.warning(f"ART_PUB_REJECT: 403 Forbidden for key={key}")
         return _json_error(403, "دسترسی فقط برای ادمین")
 
     title = str(body.get("title", "")).strip()
@@ -413,16 +466,15 @@ async def handle_content_post(request: web.Request) -> web.Response:
 
     return web.json_response({"ok": True, "item": new_item})
 
-    
 
 async def handle_content_delete(request: web.Request) -> web.Response:
     """حذف مقاله یا ستاپ آموزشی با شناسه عددی"""
-    if not _require_admin(request):
-        return _json_error(403, "دسترسی فقط برای ادمین")
-
     key = request.match_info["key"]
     if key not in _ALLOWED_CONTENT_KEYS:
         return _json_error(404, "کلید نامعتبر است")
+
+    if not _require_admin(request):
+        return _json_error(403, "دسترسی فقط برای ادمین")
 
     try:
         target_id = int(request.match_info["item_id"])

@@ -1,5 +1,5 @@
 /**
- * MemeLand Views & Feed Renderer (v6.5.0 with Academic Header Covers)
+ * MemeLand Views & Feed Renderer (v7.0.0 - Native Dock & Fluid Micro-Interactions)
  */
 
 const Views = {
@@ -13,6 +13,21 @@ const Views = {
     }
   },
 
+  // متد مرکزی فراخوانی بازخورد لمسی (Haptic)
+  haptic(type = 'light') {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      if (type === 'selection') {
+        window.Telegram.WebApp.HapticFeedback.selectionChanged();
+      } else if (type === 'success' || type === 'error' || type === 'warning') {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred(type);
+      } else {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+      }
+    } else if (window.TGBridge) {
+      TGBridge.haptic(type);
+    }
+  },
+
   // ================= تب سیگنال‌ها =================
   renderSignalsList() {
     const listEl = document.getElementById('signalsFeedList');
@@ -20,32 +35,37 @@ const Views = {
 
     const isClosed = App.state.signalSubTab === 'closed';
 
-    let list = (App.state.signals || []).filter(s => {
+    const list = (App.state.signals || []).filter(s => {
       const matchStatus = isClosed
         ? (s.outcome_status === 'win' || s.outcome_status === 'loss')
         : (s.outcome_status === 'open');
       const matchCat = App.state.category === 'all' || s.channel === App.state.category;
-      const matchSearch = !App.state.searchQuery || (s.coin && s.coin.toLowerCase().includes(App.state.searchQuery));
+      const matchSearch = !App.state.searchQuery || (s.coin && s.coin.toLowerCase().includes(App.state.searchQuery.toLowerCase()));
       return matchStatus && matchCat && matchSearch;
     });
 
     if (list.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center; padding:36px; color:var(--text-muted); font-size:12px;">سیگنالی یافت نشد.</div>';
+      listEl.innerHTML = `
+        <div style="text-align:center; padding:44px 20px; color:var(--text-muted); font-size:12px;">
+          <div style="font-size:24px; margin-bottom:8px; opacity:0.6;">🔍</div>
+          سیگنالی در این دسته‌بندی یافت نشد.
+        </div>
+      `;
       return;
     }
 
     listEl.innerHTML = list.map(s => {
       const roiClass = s.outcome_status === 'win' ? 'roi-win' : (s.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
-      const roiText = s.result ? s.result : (s.outcome_status === 'open' ? 'درحال معامله' : '—');
+      const roiText = s.result ? s.result : (s.outcome_status === 'open' ? 'در حال معامله' : '—');
       const caller = s.caller_name || s.owner_first_name || 'آلفا';
       const callerId = s.owner_telegram_id || s.caller_telegram_id || null;
 
       const caPart = s.contract_address
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
+        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${s.contract_address}')">📋 ${s.contract_address.slice(0, 4)}...${s.contract_address.slice(-4)}</span>`
         : '';
 
       const callerPart = callerId
-        ? `<span class="caller-chip" onclick="event.stopPropagation(); Dossier.show(${callerId})" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--teal);">👤 ${caller}</span>`
+        ? `<span class="caller-chip" onclick="event.stopPropagation(); Dossier.show(${callerId})" style="cursor:pointer; font-weight:600; color:var(--accent-light);">👤 ${caller}</span>`
         : `<span>👤 ${caller}</span>`;
 
       return `
@@ -67,8 +87,19 @@ const Views = {
     }).join('');
   },
 
+  copyContract(address) {
+    this.haptic('light');
+    if (window.TGBridge) {
+      TGBridge.copyText(address, 'آدرس کانترکت کپی شد ✓');
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(address).then(() => {
+        this.haptic('success');
+      }).catch(() => {});
+    }
+  },
+
   openSignalDetails(signalId) {
-    if (window.TGBridge) TGBridge.haptic('light');
+    this.haptic('light');
     const s = (App.state.signals || []).find(item => item.id === signalId);
     if (!s) return;
 
@@ -76,33 +107,37 @@ const Views = {
     const body = document.getElementById('sheetContent');
     if (!body) return;
 
+    // بارگذاری جزئیات در شیت (خلوت و بدون دکمه‌های حجیم مزاحم)
     body.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:17px;">${s.coin || '—'}</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="font-size:17px; font-weight:700;">${s.coin || '—'}</h3>
         <span class="badge-chain">${s.channel ? s.channel.toUpperCase() : 'DEX'}</span>
       </div>
       
       ${s.before_img ? `
-        <div style="margin-bottom:12px; border-radius:12px; overflow:hidden; border:1px solid var(--border);">
+        <div style="margin-bottom:14px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); background:var(--bg);">
           <img src="${s.before_img}" style="width:100%; display:block; max-height:260px; object-fit:cover;" alt="Chart">
         </div>` : ''
       }
 
       ${s.contract_address ? `
-        <div style="background:var(--bg); padding:9px 12px; border-radius:10px; margin-bottom:12px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="mono">${s.contract_address}</span>
-          <button class="btn btn-teal" style="width:auto; padding:4px 9px; font-size:10px;" onclick="if(window.TGBridge) TGBridge.copyText('${s.contract_address}')">کپی CA</button>
+        <div style="background:var(--bg); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:12px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+          <span class="mono" style="color:var(--text); word-break:break-all; font-size:11px;">${s.contract_address}</span>
+          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px; margin-right:8px;" onclick="Views.copyContract('${s.contract_address}')">کپی</button>
         </div>` : ''
       }
 
-      ${s.note ? `<p style="font-size:12px; line-height:1.8; color:var(--text-muted); margin-bottom:14px; white-space:pre-line;">${s.note}</p>` : ''}
-      
-      ${s.buy_link ? `<a href="${s.buy_link}" target="_blank" class="btn btn-primary" style="margin-bottom:10px;">خرید مستقیم در دکس ↗</a>` : ''}
+      ${s.note ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${s.note}</p>` : ''}
+
+      <!-- فال‌بک مرورگرهای دسکتاپ خارج از تلگرام -->
+      ${(!window.Telegram?.WebApp?.initData && s.buy_link) ? `
+        <a href="${s.buy_link}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
+      ` : ''}
 
       ${isAdmin ? `
-        <div class="admin-actions-grid" style="border-top:1px solid var(--border); padding-top:12px; margin-top:14px;">
+        <div class="admin-actions-grid" style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
           <button class="btn btn-secondary" onclick="Modals.openUpdateResult(${s.id})">🎯 ثبت نتیجه</button>
-          <button class="btn btn-secondary" style="color:var(--red);" onclick="Modals.deleteSignalAction(${s.id})">🗑️ حذف سیگنال</button>
+          <button class="btn btn-secondary" style="color:var(--red); border-color:rgba(244,63,94,0.2);" onclick="Modals.deleteSignalAction(${s.id})">🗑️ حذف سیگنال</button>
         </div>` : ''
       }
     `;
@@ -110,17 +145,43 @@ const Views = {
     const sheet = document.getElementById('bottomSheet');
     if (sheet) sheet.classList.add('show');
     if (window.TGBridge) TGBridge.syncBackButton(true);
+
+    // اتصال اکشن‌ها به داک بومی تلگرام (MainButton و SecondaryButton)
+    if (window.TGBridge && typeof TGBridge.showDockActions === 'function') {
+      const mainText = s.buy_link ? 'خرید مستقیم در صرافی ↗' : (s.contract_address ? 'کپی آدرس کانترکت (CA)' : null);
+      const onMainClick = s.buy_link 
+        ? () => TGBridge.openLink(s.buy_link)
+        : (s.contract_address ? () => Views.copyContract(s.contract_address) : null);
+
+      const secondaryText = (s.buy_link && s.contract_address) ? 'کپی آدرس کانترکت (CA)' : null;
+      const onSecondaryClick = (s.buy_link && s.contract_address) 
+        ? () => Views.copyContract(s.contract_address) 
+        : null;
+
+      if (mainText) {
+        TGBridge.showDockActions({ mainText, onMainClick, secondaryText, onSecondaryClick });
+      } else {
+        TGBridge.hideDockActions();
+      }
+    }
   },
 
   closeBottomSheet() {
     const sheet = document.getElementById('bottomSheet');
     if (sheet) sheet.classList.remove('show');
-    if (window.TGBridge) TGBridge.syncBackButton(App.state.currentTab !== 'signals');
+
+    // مخفی‌سازی داک بومی تلگرام و بازیابی دکمه بازگشت
+    if (window.TGBridge) {
+      TGBridge.syncBackButton(App.state.currentTab !== 'signals');
+      if (typeof TGBridge.hideDockActions === 'function') {
+        TGBridge.hideDockActions();
+      }
+    }
   },
 
   // ================= تب لیدربورد =================
   setLeaderboardType(type) {
-    if (window.TGBridge) TGBridge.haptic('selection');
+    this.haptic('selection');
     App.state.leaderboardType = type;
     const btnCallers = document.getElementById('btnLbCallers');
     const btnGivers = document.getElementById('btnLbGivers');
@@ -134,7 +195,7 @@ const Views = {
     if (!listEl) return;
 
     if (!App.state.leaderboardData || (!App.state.leaderboardData.callers?.length && !App.state.leaderboardData.signal_givers?.length)) {
-      listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال بارگذاری رتبه‌بندی...</div>';
+      listEl.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">در حال بارگذاری رتبه‌بندی...</div>';
       try {
         App.state.leaderboardData = await API.getLeaderboard();
       } catch (e) {
@@ -146,7 +207,7 @@ const Views = {
     const rows = isCallers ? (App.state.leaderboardData?.callers || []) : (App.state.leaderboardData?.signal_givers || []);
 
     if (!rows || rows.length === 0) {
-      listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">هنوز رتبه‌ای ثبت نشده است.</div>`;
+      listEl.innerHTML = `<div style="text-align:center; padding:32px; color:var(--text-muted); font-size:12px;">هنوز رتبه‌ای ثبت نشده است.</div>`;
       return;
     }
 
@@ -155,7 +216,7 @@ const Views = {
         <div class="card-atomic" style="cursor:default;">
           <div class="card-atomic-top">
             <div class="token-meta">
-              <span class="mono" style="color:var(--teal); font-weight:700;">#${i + 1}</span>
+              <span class="mono" style="color:var(--accent-light); font-weight:700;">#${i + 1}</span>
               <span class="token-name">👤 ${r.caller_name || 'ناشناس'}</span>
             </div>
             <span style="color:var(--gold); font-size:12.5px; font-weight:700;">★ ${r.avg_rating || '5.0'}</span>
@@ -171,10 +232,10 @@ const Views = {
         <div class="card-atomic" style="cursor:default;">
           <div class="card-atomic-top">
             <div class="token-meta">
-              <span class="mono" style="color:var(--pink, #ec4899); font-weight:700;">#${i + 1}</span>
+              <span class="mono" style="color:var(--accent-light); font-weight:700;">#${i + 1}</span>
               <span class="token-name">📡 ${r.full_name || r.username || 'کاربر'}</span>
             </div>
-            <span style="color:var(--teal); font-size:12.5px; font-weight:700;">${r.points || 0} pt</span>
+            <span style="color:var(--green); font-size:12.5px; font-weight:700;" class="mono">${r.points || 0} pt</span>
           </div>
           <div class="card-atomic-bottom">
             <span>${r.count || 0} سیگنال · ${r.wins || 0} برد</span>
@@ -187,7 +248,7 @@ const Views = {
 
   // ================= تب آکادمی با مقالات هدر تصاویری =================
   setAcademySubTab(subTab) {
-    if (window.TGBridge) TGBridge.haptic('selection');
+    this.haptic('selection');
     App.state.academyTab = subTab;
     const btnStrat = document.getElementById('btnAcadStrat');
     const btnArt = document.getElementById('btnAcadArt');
@@ -204,7 +265,7 @@ const Views = {
 
     if (App.state.academyTab === 'strategies') {
       if (!App.state.strategies || !App.state.strategies.length) {
-        listEl.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت ستاپ‌ها...</div>';
+        listEl.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">در حال دریافت استراتژی‌ها...</div>';
         try {
           App.state.strategies = await API.getContent('strategies');
         } catch (e) {
@@ -213,22 +274,22 @@ const Views = {
       }
 
       if (!App.state.strategies || App.state.strategies.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">ستاپ تحلیلی ثبت نشده است.</div>';
+        listEl.innerHTML = '<div style="text-align:center; padding:32px; color:var(--text-muted); font-size:12px;">ستاپ تحلیلی ثبت نشده است.</div>';
         return;
       }
 
       listEl.innerHTML = App.state.strategies.map(st => `
         <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13px; margin-bottom:5px; color:var(--text);">${st.title || 'ستاپ معاملاتی'}</h4>
-          <p style="font-size:11px; color:var(--text-muted); line-height:1.7;">${st.desc || st.body || ''}</p>
+          <h4 style="font-size:13.5px; font-weight:700; margin-bottom:6px; color:var(--text);">${st.title || 'ستاپ معاملاتی'}</h4>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.75;">${st.desc || st.body || ''}</p>
         </div>
       `).join('');
     } else {
       let adminActionHeader = '';
       if (isAdmin) {
         adminActionHeader = `
-          <div style="margin-bottom:12px;">
-            <button class="btn btn-secondary" style="border-style:dashed; border-color:var(--teal); color:var(--teal);" onclick="Modals.openAddArticleModal()">
+          <div style="margin-bottom:14px;">
+            <button class="btn btn-secondary" style="border-style:dashed; border-color:var(--accent); color:var(--accent-light);" onclick="Modals.openAddArticleModal()">
               ➕ نگارش و انتشار مقاله جدید
             </button>
           </div>
@@ -236,7 +297,7 @@ const Views = {
       }
 
       if (!App.state.articles || !App.state.articles.length) {
-        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">در حال دریافت مقالات...</div>';
+        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">در حال دریافت مقالات...</div>';
         try {
           App.state.articles = await API.getContent('articles');
         } catch (e) {
@@ -245,7 +306,7 @@ const Views = {
       }
 
       if (!App.state.articles || App.state.articles.length === 0) {
-        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
+        listEl.innerHTML = adminActionHeader + '<div style="text-align:center; padding:32px; color:var(--text-muted); font-size:12px;">مقاله‌ای ثبت نشده است.</div>';
         return;
       }
 

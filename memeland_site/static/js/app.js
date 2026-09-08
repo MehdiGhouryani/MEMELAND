@@ -1,17 +1,21 @@
 /**
- * MemeLand Core Controller (Ultra-Lightweight & Diagnosed v5.9.0)
+ * MemeLand Core Controller (v7.0.0 - Stealth Design & Native Haptics)
  */
 
 window.sendRemoteLog = function(msg) {
-  fetch('/site/client-log', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ msg: msg })
-  }).catch(() => {});
+  // Only send critical runtime errors to prevent server log inflation
+  if (!msg || (!msg.startsWith('JS-ERR:') && !msg.startsWith('AUTH_CRIT:'))) return;
+  try {
+    fetch('/site/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: msg })
+    }).catch(() => {});
+  } catch (e) {}
 };
 
 window.addEventListener('error', function(e) {
-  window.sendRemoteLog(`JS-ERR: ${e.message} @ line ${e.lineno}`);
+  window.sendRemoteLog(`JS-ERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
 });
 
 const App = {
@@ -30,18 +34,32 @@ const App = {
     staffList: []
   },
 
+  haptic(type = 'light') {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      if (type === 'selection') window.Telegram.WebApp.HapticFeedback.selectionChanged();
+      else if (type === 'success' || type === 'error') window.Telegram.WebApp.HapticFeedback.notificationOccurred(type);
+      else window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+    } else if (window.TGBridge) {
+      TGBridge.haptic(type);
+    }
+  },
+
   async init() {
     if (window.TGBridge) TGBridge.init();
     this.startSplashTicker();
-    const safetyTimer = setTimeout(() => this.hideSplash(), 3000);
+    const safetyTimer = setTimeout(() => this.hideSplash(), 2800);
 
     try {
       let session = null;
       try {
-        session = await API.authenticateWebApp();
-        if (!session) session = await API.getSession();
+        if (window.API && typeof API.authenticateWebApp === 'function') {
+          session = await API.authenticateWebApp();
+        }
+        if (!session && window.API && typeof API.getSession === 'function') {
+          session = await API.getSession();
+        }
       } catch (e) {
-        window.sendRemoteLog(`AuthFail: ${e}`);
+        console.warn('Session fetch warning:', e);
       }
       this.state.session = session;
 
@@ -49,15 +67,11 @@ const App = {
       this.updateUserInterface();
       Views.renderCurrent();
 
-      // ارسال تله‌متری اولیه به سرور برای اطمینان از وضعیت
-      const isSvgReady = Boolean(document.querySelector('#avatarSvgContainer svg'));
-      window.sendRemoteLog(`BOOT: uid=${session?.telegram_id || 'none'} is_adm=${session?.is_admin} hasSvg=${isSvgReady} hasRenderer=${Boolean(window.AvatarRenderer)}`);
-
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
           await App.loadSignals();
           Views.renderSignalsList();
-          if (!isSilent) {
+          if (!isSilent && window.API && typeof API.getSession === 'function') {
             const fresh = await API.getSession();
             if (fresh) {
               App.state.session = fresh;
@@ -67,22 +81,22 @@ const App = {
         });
       }
     } catch (err) {
-      window.sendRemoteLog(`InitCatch: ${err}`);
+      window.sendRemoteLog(`JS-ERR: Init ${err.message || err}`);
     } finally {
       clearTimeout(safetyTimer);
-      setTimeout(() => this.hideSplash(), 300);
+      setTimeout(() => this.hideSplash(), 250);
     }
   },
 
   startSplashTicker() {
     const statusEl = document.getElementById('splashStatusText');
     if (!statusEl) return;
-    const steps = ['در حال اتصال به شبکه آلفا...', 'اسکن پامپ‌های دکس...', 'همگام‌سازی سهمیه...'];
+    const steps = ['در حال همگام‌سازی شبکه آلفا...', 'اسکن پامپ‌های دکس...', 'دریافت وضعیت سهمیه...'];
     let idx = 0;
     this._splashInterval = setInterval(() => {
       idx = (idx + 1) % steps.length;
       statusEl.textContent = steps[idx];
-    }, 700);
+    }, 650);
   },
 
   hideSplash() {
@@ -113,7 +127,7 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
-    // تشخیص دقیق وضعیت ادمین
+    // تشخیص قاطع وضعیت ادمین
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
@@ -122,7 +136,7 @@ const App = {
     else if (isAdmin) roleKey = 'admin';
     else if (quota?.role_key && quota.role_key !== 'rookie') roleKey = quota.role_key;
 
-    // رندر هوشمند: عکس واقعی تلگرام در صورت وجود، یا وکتور SVG تم‌دار
+    // رندر هوشمند آواتار
     if (avatarContainer) {
       if (photoUrl) {
         avatarContainer.innerHTML = `<img src="${photoUrl}" alt="${displayName}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.outerHTML=window.AvatarRenderer ? AvatarRenderer.getAvatarSvg('${roleKey}') : ''">`;
@@ -148,16 +162,10 @@ const App = {
     if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
     if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
     if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
-
-    if (window.sendRemoteLog) {
-      const hasImg = Boolean(avatarContainer && avatarContainer.querySelector('img'));
-      const hasSvg = Boolean(avatarContainer && avatarContainer.querySelector('svg'));
-      window.sendRemoteLog(`UI_SYNC: uid=${tid} role=${roleKey} adm=${isAdmin} img=${hasImg} svg=${hasSvg}`);
-    }
   },
 
   switchTab(tabName) {
-    if (window.TGBridge) TGBridge.haptic('selection');
+    this.haptic('selection');
     this.state.currentTab = tabName;
     document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.bottom-nav .nav-btn').forEach(el => el.classList.remove('active'));
@@ -174,7 +182,7 @@ const App = {
   },
 
   setSignalSubTab(subTab) {
-    if (window.TGBridge) TGBridge.haptic('selection');
+    this.haptic('selection');
     this.state.signalSubTab = subTab;
     document.getElementById('subTabActive')?.classList.toggle('active', subTab === 'active');
     document.getElementById('subTabClosed')?.classList.toggle('active', subTab === 'closed');
@@ -182,7 +190,7 @@ const App = {
   },
 
   setCategory(cat) {
-    if (window.TGBridge) TGBridge.haptic('selection');
+    this.haptic('selection');
     this.state.category = cat;
     document.querySelectorAll('#catFilterChips .chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
@@ -197,7 +205,9 @@ const App = {
 
   async loadSignals() {
     try {
-      this.state.signals = await API.getSignals();
+      if (window.API && typeof API.getSignals === 'function') {
+        this.state.signals = await API.getSignals();
+      }
       const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open').length;
       const countBadge = document.getElementById('activeCountBadge');
       if (countBadge) countBadge.textContent = openCount;

@@ -1,4 +1,7 @@
-/* Pull-to-Refresh Container */
+/* ==========================================================================
+   MemeLand Hub - Modern Fluid Pull-to-Refresh (v7.0.0)
+   ========================================================================== */
+
 .ptr-indicator {
   position: relative;
   width: 100%;
@@ -8,9 +11,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
   z-index: 10;
+  box-sizing: border-box;
+  background: transparent;
 }
 
 .ptr-indicator.pulling {
@@ -18,55 +23,58 @@
 }
 
 .ptr-frog-box {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: #11141d;
-  border: 1.5px solid var(--teal, #10b981);
+  background: var(--bg-surface, #12151f);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
-  transform: scale(0.6);
-  transition: transform 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transform: scale(0.75);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .ptr-indicator.active .ptr-frog-box {
   transform: scale(1);
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 16px var(--accent-glow, rgba(99, 102, 241, 0.25));
 }
 
 .ptr-frog-icon {
-  font-size: 22px;
+  font-size: 20px;
+  line-height: 1;
   display: inline-block;
 }
 
+.ptr-indicator.refreshing .ptr-frog-box {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 16px var(--accent-glow, rgba(99, 102, 241, 0.3));
+}
+
 .ptr-indicator.refreshing .ptr-frog-icon {
-  animation: frogSpin 0.7s infinite linear;
+  animation: frogSpin 0.75s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes frogSpin {
-  0% { transform: rotate(0deg) scale(1); }
-  50% { transform: rotate(180deg) scale(1.15); }
-  100% { transform: rotate(360deg) scale(1); }
+  0% { transform: rotate(0deg) scale(0.95); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(0.95); }
 }
 
 .ptr-status-text {
-  font-size: 10px;
-  color: var(--text-muted, #71717a);
-  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-muted, #8a93a6);
+  margin-top: 6px;
   font-weight: 500;
+  letter-spacing: 0.2px;
+  transition: color 0.2s ease;
 }
 
-/* مهار تاچ پیش‌فرض برای اجرای بدون باگ کشش به پایین */
+/* Scroll containment to prevent elastic browser collisions */
 .app-main,
 #tab-signals {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-}
-
-.ptr-indicator {
-  width: 100%;
-  box-sizing: border-box;
-  background: transparent;
-  pointer-events: none;
 }

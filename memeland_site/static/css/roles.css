@@ -1,24 +1,29 @@
-/* =========================================================
-   MemeLand Role Badges, Glowing Avatars & Animation Themes
-   ========================================================= */
+/* ==========================================================================
+   MemeLand Hub - Role Badges, Stealth Avatars & Fluid Glow System (v7.0.0)
+   ========================================================================== */
 
-/* کانتینر اصلی آواتار پروفایل */
+/* Main Profile Avatar Frame */
 .avatar-frame {
   position: relative;
-  width: 76px !important;
-  height: 76px !important;
-  min-width: 76px !important;
-  min-height: 76px !important;
-  border-radius: 50%;
+  width: 72px !important;
+  height: 72px !important;
+  min-width: 72px !important;
+  min-height: 72px !important;
+  border-radius: var(--radius-full, 50%);
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: #11141d;
+  background: var(--bg-surface, #12151f);
   flex-shrink: 0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  transition: transform var(--duration-fast, 0.18s) var(--spring-ease, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
-/* پر کردن کامل فریم توسط کانتینر میانی و SVG وکتور */
+.avatar-frame:active {
+  transform: scale(0.96);
+}
+
+/* Vector SVG Container */
 .avatar-frame #avatarSvgContainer,
 #avatarSvgContainer {
   width: 100% !important;
@@ -26,7 +31,7 @@
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 50%;
+  border-radius: var(--radius-full, 50%);
   overflow: hidden;
 }
 
@@ -34,25 +39,25 @@
 #avatarSvgContainer svg {
   width: 100% !important;
   height: 100% !important;
-  min-width: 60px !important;
-  min-height: 60px !important;
+  min-width: 58px !important;
+  min-height: 58px !important;
   display: block !important;
-  border-radius: 50%;
+  border-radius: var(--radius-full, 50%);
 }
 
-/* هاله نئونی گردان دور آواتار */
+/* Smooth Rotating Radial Halo Border */
 .avatar-frame::before {
   content: '';
   position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  padding: 3px;
-  background: var(--role-gradient, linear-gradient(135deg, #3f3f46, #71717a));
+  inset: -2.5px;
+  border-radius: var(--radius-full, 50%);
+  padding: 2.5px;
+  background: var(--role-gradient, linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
-  animation: rotateGlow 4s linear infinite;
+  animation: rotateGlow 5s linear infinite;
   pointer-events: none;
 }
 
@@ -61,92 +66,96 @@
   100% { transform: rotate(360deg); }
 }
 
-/* نشان شناور گوشه آواتار */
+/* Corner Floating Status Badge */
 .role-badge-mini {
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  background: #181b26;
-  border: 2px solid #07090e;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  background: var(--bg-surface, #12151f);
+  border: 2px solid var(--bg, #090a0f);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   z-index: 2;
 }
 
-/* ================= تم‌های نوری نقش‌ها ================= */
+/* ================= Role Themes (Refined Subtle Glows) ================= */
 
-/* ۱. پپه‌ی سلطنتی (Admin & Super Admin) */
+/* ۱. Admin & Super Admin */
 .theme-admin,
 .theme-super_admin {
   --role-gradient: linear-gradient(135deg, #f59e0b, #fbbf24, #d97706);
-  box-shadow: 0 0 24px rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.22);
 }
 .theme-admin .profile-role-title,
 .theme-super_admin .profile-role-title {
   color: #fbbf24 !important;
-  text-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+  font-weight: 700;
 }
 
-/* ۲. سگ کلاه‌بافتنی چاد (VIP Helper) */
+/* ۲. VIP Helper */
 .theme-vip_helper {
-  --role-gradient: linear-gradient(135deg, #a855f7, #06b6d4, #8b5cf6);
-  box-shadow: 0 0 24px rgba(6, 182, 212, 0.35);
+  --role-gradient: linear-gradient(135deg, #6366f1, #818cf8, #4f46e5);
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.25);
 }
 .theme-vip_helper .profile-role-title {
-  color: #38bdf8 !important;
-  text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+  color: #818cf8 !important;
+  font-weight: 700;
 }
 
-/* ۳. دوج کوین کهنه‌کار (Memeland OG) */
+/* ۳. Memeland OG */
 .theme-og {
   --role-gradient: linear-gradient(135deg, #eab308, #ca8a04, #fef08a);
-  box-shadow: 0 0 20px rgba(234, 179, 8, 0.3);
+  box-shadow: 0 0 16px rgba(234, 179, 8, 0.2);
 }
 .theme-og .profile-role-title {
   color: #facc15 !important;
+  font-weight: 700;
 }
 
-/* ۴. گوریل فضانورد کندل‌های سبز (Alpha Master) */
+/* ۴. Alpha Master */
 .theme-alpha {
   --role-gradient: linear-gradient(135deg, #10b981, #34d399, #059669);
-  box-shadow: 0 0 22px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 18px rgba(16, 185, 129, 0.25);
 }
 .theme-alpha .profile-role-title {
   color: #34d399 !important;
-  text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
+  font-weight: 700;
 }
 
-/* ۵. کوسه وال کریپتویی (Guardian) */
+/* ۵. Guardian */
 .theme-guardian {
   --role-gradient: linear-gradient(135deg, #0284c7, #38bdf8, #0369a1);
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
 }
 .theme-guardian .profile-role-title {
   color: #38bdf8 !important;
+  font-weight: 700;
 }
 
-/* ۶. قورباغه اکسپلورر (Explorer) */
+/* ۶. Explorer */
 .theme-explorer {
   --role-gradient: linear-gradient(135deg, #84cc16, #a3e635, #4d7c0f);
-  box-shadow: 0 0 16px rgba(132, 204, 22, 0.25);
+  box-shadow: 0 0 14px rgba(132, 204, 22, 0.18);
 }
 .theme-explorer .profile-role-title {
   color: #a3e635 !important;
+  font-weight: 700;
 }
 
-/* ۷. جوجه تازه‌کار (Rookie / Member) */
+/* ۷. Rookie & Standard Member */
 .theme-rookie,
 .theme-member {
-  --role-gradient: linear-gradient(135deg, #71717a, #a1a1aa, #52525b);
-  box-shadow: 0 0 10px rgba(161, 161, 170, 0.15);
+  --role-gradient: linear-gradient(135deg, #525a6c, #8a93a6, #3f4553);
+  box-shadow: 0 0 10px rgba(138, 147, 166, 0.1);
 }
 .theme-rookie .profile-role-title,
 .theme-member .profile-role-title {
-  color: #a1a1aa !important;
+  color: #8a93a6 !important;
+  font-weight: 600;
 }

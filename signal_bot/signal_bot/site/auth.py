@@ -21,6 +21,24 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def get_admin_ids() -> List[int]:
+    """برگرداندن لیست تمام مدیران از جدول staff و تنظیمات برای استفاده در روت‌ها"""
+    admin_ids = [int(x) for x in getattr(settings, "ADMIN_IDS", [])]
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
+        if c.fetchone():
+            c.execute("SELECT user_id FROM staff WHERE role IN ('admin', 'vip_helper')")
+            db_admins = [r[0] for r in c.fetchall()]
+            admin_ids.extend(db_admins)
+    except Exception as e:
+        logger.warning(f"GetAdminIdsErr: {e}")
+    finally:
+        conn.close()
+    return list(set(admin_ids))
+
+
 def _is_super_admin(telegram_id: Any) -> bool:
     if telegram_id is None:
         return False
@@ -115,19 +133,44 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
 
 
 def get_staff_list() -> List[Dict[str, Any]]:
+    """
+    برگرداندن لیست اعضای کادر به‌همراه مشخصات کامل (نام و نام کاربری) با جوین جدول sessions/profiles
+    """
     conn = get_db()
     staff_rows = []
     try:
         c = conn.cursor()
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
         if c.fetchone():
-            c.execute("SELECT user_id, role, added_at FROM staff")
+            # استفاده از LEFT JOIN با sessionها برای استخراج نام و یوزرنیم
+            # از آنجا که یک کاربر ممکن است چند نشست داشته باشد، از MAX یا GROUP BY استفاده می‌شود
+            query = """
+                SELECT 
+                    s.user_id, 
+                    s.role, 
+                    s.added_at,
+                    MAX(p.first_name) as first_name,
+                    MAX(p.username) as username
+                FROM staff s
+                LEFT JOIN sessions p ON s.user_id = p.telegram_id
+                GROUP BY s.user_id
+                ORDER BY s.added_at DESC
+            """
+            c.execute(query)
             for r in c.fetchall():
+                uid, role, added_at, fname, uname = r
+                
+                # فال‌بک نام‌گذاری در صورتی که کاربر تا به حال وب‌اپ را باز نکرده باشد
+                display_name = fname if fname else f"کاربر {uid}"
+                telegram_handle = f"@{uname}" if uname else f"ID: {uid}"
+
                 staff_rows.append({
-                    "user_id": r[0],
-                    "role": r[1],
-                    "added_at": r[2],
-                    "is_super": _is_super_admin(r[0])
+                    "user_id": uid,
+                    "role": role,
+                    "added_at": added_at,
+                    "is_super": _is_super_admin(uid),
+                    "first_name": display_name,
+                    "username": telegram_handle
                 })
     finally:
         conn.close()
@@ -240,7 +283,8 @@ def verify_login_widget_payload(payload: dict, bot_token: str, max_age_seconds: 
         return None
 
     pairs = sorted((k, str(v)) for k, v in data.items() if v is not None)
-    check_string = "\n".join(f"{k}={v}" for k, v in pairs)
+    check_string = "
+".join(f"{k}={v}" for k, v in pairs)
 
     secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
     computed_hash = hmac.new(secret_key, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
