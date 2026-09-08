@@ -1,5 +1,5 @@
 /**
- * MemeLand Views & Feed Renderer (v7.2.0 - 2-Column Grid & Reader Mode)
+ * MemeLand Views & Feed Renderer (v7.6.0 - Direct Feed Render & Reader Mode)
  */
 
 const Views = {
@@ -13,7 +13,6 @@ const Views = {
     }
   },
 
-  // متد مرکزی فراخوانی بازخورد لمسی (Haptic)
   haptic(type = 'light') {
     if (window.Telegram?.WebApp?.HapticFeedback) {
       if (type === 'selection') {
@@ -73,7 +72,7 @@ const Views = {
       const contractAddr = s.contract_address || null;
 
       const caPart = contractAddr
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${contractAddr}')">📋 ${contractAddr.slice(0, 4)}...${contractAddr.slice(-4)}</span>`
+        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${contractAddr}')">📋 ${contractAddr.length > 10 ? contractAddr.slice(0, 4) + '...' + contractAddr.slice(-4) : contractAddr}</span>`
         : '';
 
       const callerPart = callerId
@@ -135,7 +134,7 @@ const Views = {
       
       ${chartImg ? `
         <div style="margin-bottom:14px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); background:var(--bg);">
-          <img src="${chartImg}" style="width:100%; display:block; max-height:260px; object-fit:cover;" alt="Chart">
+          <img src="${chartImg}" style="width:100%; display:block; max-height:260px; object-fit:contain;" alt="Chart">
         </div>` : ''
       }
 
@@ -262,7 +261,7 @@ const Views = {
     }
   },
 
-  // ================= تب آکادمی (گرید دو ستونه + Reader Mode) =================
+  // ================= تب آکادمی =================
   setAcademySubTab(subTab) {
     this.haptic('selection');
     App.state.academyTab = subTab;
@@ -279,7 +278,6 @@ const Views = {
 
     const session = App.state.session;
     const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    // تایید قطعی وضعیت ادمین همگام با منطق سراسری برنامه
     const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
 
     if (App.state.academyTab === 'strategies') {
@@ -329,14 +327,12 @@ const Views = {
         return;
       }
 
-      // مرتب‌سازی مقالات از جدید به قدیم بر اساس شناسه یا فیلد تاریخ
       const sortedArticles = [...App.state.articles].sort((a, b) => {
         const timeA = a.id ? Number(a.id) : (a.created_at ? new Date(a.created_at).getTime() : 0);
         const timeB = b.id ? Number(b.id) : (b.created_at ? new Date(b.created_at).getTime() : 0);
         return timeB - timeA;
       });
 
-      // رندر چیدمان شبکه‌ای دو ستونه
       const gridHtml = `
         <div class="articles-grid">
           ${sortedArticles.map(art => {
@@ -371,7 +367,6 @@ const Views = {
     }
   },
 
-  // ================= حالت مطالعه کامل مقاله (Reader Mode در BottomSheet) =================
   openArticleReader(articleId) {
     this.haptic('light');
     const art = (App.state.articles || []).find(item => Number(item.id) === Number(articleId));

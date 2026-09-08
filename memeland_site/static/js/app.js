@@ -1,5 +1,5 @@
 /**
- * MemeLand Core Controller (v7.3.0 - Guaranteed Session Sync & Signals Feed)
+ * MemeLand Core Controller (v7.6.0 - Guaranteed Session Sync & Signals Feed)
  */
 
 window.sendRemoteLog = function(msg) {
@@ -28,7 +28,6 @@ const App = {
   state: {
     currentTab: 'signals',
     signalSubTab: 'active',
-    category: 'all',
     searchQuery: '',
     session: null,
     signals: [],
@@ -75,16 +74,14 @@ const App = {
       }
       this.state.session = session;
 
-      // دریافت سیگنال‌ها بعد از تعیین توکن نشست
       await this.loadSignals();
       this.updateUserInterface();
 
-      // رندر اولیه رابط کاربری و فید سیگنال‌ها
       if (window.Views) {
-        if (typeof Views.renderCurrent === 'function') {
-          Views.renderCurrent();
-        } else if (typeof Views.renderSignalsList === 'function') {
+        if (typeof Views.renderSignalsList === 'function') {
           Views.renderSignalsList();
+        } else if (typeof Views.renderCurrent === 'function') {
+          Views.renderCurrent();
         }
       }
 
@@ -238,17 +235,6 @@ const App = {
     }
   },
 
-  setCategory(cat) {
-    this.haptic('selection');
-    this.state.category = cat;
-    document.querySelectorAll('#catFilterChips .chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
-    });
-    if (window.Views && typeof Views.renderSignalsList === 'function') {
-      Views.renderSignalsList();
-    }
-  },
-
   onSearchInput(val) {
     this.state.searchQuery = (val || '').trim().toLowerCase();
     if (window.Views && typeof Views.renderSignalsList === 'function') {
@@ -260,7 +246,7 @@ const App = {
     try {
       if (window.API && typeof API.getSignals === 'function') {
         const res = await API.getSignals();
-        this.state.signals = Array.isArray(res) ? res : (res?.signals || res?.items || []);
+        this.state.signals = Array.isArray(res) ? res : (res?.items || res?.signals || res?.feed || []);
       }
       
       const openCount = (this.state.signals || []).filter(s => {
@@ -270,7 +256,12 @@ const App = {
 
       const countBadge = document.getElementById('activeCountBadge');
       if (countBadge) countBadge.textContent = openCount;
+
+      if (window.sendRemoteLog) {
+        window.sendRemoteLog(`[APP] loadSignalsOK: total=${this.state.signals.length}, open=${openCount}`);
+      }
     } catch (e) {
+      if (window.sendRemoteLog) window.sendRemoteLog(`[APP] loadSignalsErr: ${e.message}`);
       this.state.signals = [];
     }
   }

@@ -1,5 +1,5 @@
 /**
- * MemeLand API Service & Session Manager (v7.3.5 - Deep Feed Parser & Diagnostics)
+ * MemeLand API Service & Session Manager (v7.6.0 - Robust Token Sanitization & Direct Array Parser)
  */
 
 const API = {
@@ -12,13 +12,15 @@ const API = {
   },
 
   getToken() {
-    return localStorage.getItem('mh_session_token') || 
-           localStorage.getItem('ml_token') || 
-           sessionStorage.getItem('ml_token') || '';
+    const t = localStorage.getItem('mh_session_token') || 
+              localStorage.getItem('ml_token') || 
+              sessionStorage.getItem('ml_token') || '';
+    if (!t || t === 'undefined' || t === 'null') return '';
+    return t;
   },
 
   setToken(token) {
-    if (!token) return;
+    if (!token || token === 'undefined' || token === 'null') return;
     try {
       localStorage.setItem('mh_session_token', token);
       localStorage.setItem('ml_token', token);
@@ -115,7 +117,7 @@ const API = {
     try {
       const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
       if (!resp.ok) {
-        if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsHTTP: ${resp.status}`);
+        this.log(`SignalsHTTPFail: status=${resp.status}`);
         return [];
       }
       const data = await resp.json();
@@ -124,13 +126,13 @@ const API = {
       if (Array.isArray(data)) {
         list = data;
       } else if (data && typeof data === 'object') {
-        list = data.signals || data.feed || data.items || data.data || [];
+        list = data.items || data.signals || data.feed || data.data || [];
       }
 
-      if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsFetched: count=${list.length}`);
+      this.log(`SignalsFetched: count=${list.length}`);
       return list;
     } catch (e) {
-      if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsErr: ${e.message}`);
+      this.log(`SignalsCatchErr: ${e.message}`);
       return [];
     }
   },

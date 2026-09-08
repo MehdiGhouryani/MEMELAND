@@ -39,36 +39,26 @@ def _get_session_from_request(request: web.Request):
     header = request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         token = header[len("Bearer "):].strip()
-        if token and token not in ("null", "undefined"):
+        if token and token not in ("null", "undefined", "none"):
             return token
     return None
 
 
 def _resolve_user_session(request: web.Request, body_data: dict = None):
-    """
-    اعتبارسنجی جامع و ایمن سشن با مکانیزم چندلایه فال‌بک:
-    ۱. توکن Bearer در هدر Authorization
-    ۲. هدر بومی تلگرام X-Telegram-Init-Data
-    ۳. فیلد init_data ارسالی درون بادی درخواست
-    ۴. شناسه کاربری تلگرام (X-Telegram-User-Id) همراه با استخراج پروفایل و دسترسی‌ها
-    """
     from signal_bot.config import settings
 
-    # ۱. بررسی توکن Bearer
     token = _get_session_from_request(request)
     if token:
         session = auth.get_session(token)
         if session:
             return session
 
-    # ۲. بررسی هدر X-Telegram-Init-Data
     init_data_header = request.headers.get("X-Telegram-Init-Data")
     if init_data_header:
         auth_res = auth.authenticate_webapp(init_data_header, settings.TOKEN)
         if auth_res:
             return auth_res
 
-    # ۳. بررسی فیلد init_data در بادی JSON
     if body_data and isinstance(body_data, dict):
         init_data_body = body_data.get("init_data") or body_data.get("initData")
         if init_data_body:
@@ -76,14 +66,12 @@ def _resolve_user_session(request: web.Request, body_data: dict = None):
             if auth_res:
                 return auth_res
 
-    # ۴. فال‌بک هوشمند بر اساس شناسه کاربری هدر تلگرام
     user_id_hdr = request.headers.get("X-Telegram-User-Id")
     if user_id_hdr and user_id_hdr.isdigit():
         uid = int(user_id_hdr)
         quota_info = auth.get_user_role_and_quota(uid)
         prof = auth.get_profile(uid)
         
-        # ثبت سشن موقت برای استفاده در درخواست‌های بعدی کلاینت
         token = auth.create_session(
             telegram_id=uid,
             first_name=prof.get("display_name") or f"User_{uid}",
@@ -175,7 +163,6 @@ async def handle_webapp_auth(request: web.Request) -> web.Response:
 
     init_data = payload.get("init_data") or payload.get("initData")
     if not init_data:
-        # اگر initData فرستاده نشده باشد، سشن را از روی هدر استخراج می‌کنیم
         session = _resolve_user_session(request, payload)
         if session:
             return web.json_response(session)
@@ -183,7 +170,6 @@ async def handle_webapp_auth(request: web.Request) -> web.Response:
 
     auth_result = auth.authenticate_webapp(init_data, settings.TOKEN)
     if not auth_result:
-        # در صورت نامعتبر بودن امضا، بازبینی مجدد با هدر کاربری انجام می‌شود
         session = _resolve_user_session(request, payload)
         if session:
             return web.json_response(session)
@@ -200,7 +186,7 @@ async def handle_session(request: web.Request) -> web.Response:
     return web.json_response(session)
 
 
-# ================= آپلود مستقیم تصویر با واترمارک =================
+# ================= آپلود تصویر =================
 
 async def handle_image_upload(request: web.Request) -> web.Response:
     session = _resolve_user_session(request)
@@ -244,7 +230,7 @@ async def handle_image_upload(request: web.Request) -> web.Response:
     return web.json_response({"url": public_url})
 
 
-# ================= مدیریت ادمین‌ها و اعطای نقش =================
+# ================= مدیریت کادر =================
 
 async def handle_staff_list(request: web.Request) -> web.Response:
     if not _require_admin(request):
@@ -284,7 +270,8 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
     return web.json_response({"ok": ok}) if ok else _json_error(400, "امکان حذف سوپرادمین وجود ندارد")
 
 
-# ================= مسیرهای سیگنال و فید =================
+# ================= مسیرهای فید سیگنال‌ها =================
+
 async def handle_signals_get(request: web.Request) -> web.Response:
     viewer = _resolve_user_session(request) or {
         "telegram_id": 2088114041,
@@ -313,7 +300,6 @@ async def handle_signals_get(request: web.Request) -> web.Response:
 
     logger.info(f"FeedDeliver: count={len(raw_list)}")
     return web.json_response(raw_list)
-
 
 
 async def handle_signals_create(request: web.Request) -> web.Response:
@@ -436,7 +422,7 @@ async def handle_leaderboard(request: web.Request) -> web.Response:
     })
 
 
-# ================= مدیریت محتوای آکادمی (مقالات و ستاپ‌ها) =================
+# ================= مدیریت محتوای آکادمی =================
 
 _ALLOWED_CONTENT_KEYS = {"articles", "strategies"}
 
@@ -450,7 +436,6 @@ async def handle_content_get(request: web.Request) -> web.Response:
 
 
 async def handle_content_post(request: web.Request) -> web.Response:
-    """ثبت مقاله یا ستاپ جدید در آکادمی با اعتبارسنجی چندلایه و فال‌بک کامل"""
     key = request.match_info["key"]
     if key not in _ALLOWED_CONTENT_KEYS:
         return _json_error(404, "کلید نامعتبر است")
@@ -524,15 +509,11 @@ def register(app: web.Application):
     if os.path.exists(_STATIC_DIR):
         app.router.add_static("/static/", _STATIC_DIR, name="static")
 
-    # روت‌های کلاینت لاگر و احراز هویت
     app.router.add_post("/site/client-log", handle_client_log)
     app.router.add_post("/site/upload", handle_image_upload)
-    
-    # ثبت تمام مسیرهای ممکن احراز هویت وب‌اپ
     app.router.add_post("/webapp-auth", handle_webapp_auth)
     app.router.add_post("/site/auth", handle_webapp_auth)
     app.router.add_post("/site/webapp-auth", handle_webapp_auth)
-    
     app.router.add_get("/site/session", handle_session)
     app.router.add_get("/site/traders/{user_id}", handle_trader_dossier)
     app.router.add_get("/site/staff", handle_staff_list)
