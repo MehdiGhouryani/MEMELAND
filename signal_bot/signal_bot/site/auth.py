@@ -134,7 +134,7 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
 
 def get_staff_list() -> List[Dict[str, Any]]:
     """
-    برگرداندن لیست اعضای کادر به‌همراه مشخصات کامل (نام و نام کاربری) با جوین جدول sessions/profiles
+    برگرداندن لیست اعضای کادر به‌همراه مشخصات کامل (نام و نام کاربری) با جوین جدول sessions
     """
     conn = get_db()
     staff_rows = []
@@ -142,8 +142,6 @@ def get_staff_list() -> List[Dict[str, Any]]:
         c = conn.cursor()
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
         if c.fetchone():
-            # استفاده از LEFT JOIN با sessionها برای استخراج نام و یوزرنیم
-            # از آنجا که یک کاربر ممکن است چند نشست داشته باشد، از MAX یا GROUP BY استفاده می‌شود
             query = """
                 SELECT 
                     s.user_id, 
@@ -160,7 +158,6 @@ def get_staff_list() -> List[Dict[str, Any]]:
             for r in c.fetchall():
                 uid, role, added_at, fname, uname = r
                 
-                # فال‌بک نام‌گذاری در صورتی که کاربر تا به حال وب‌اپ را باز نکرده باشد
                 display_name = fname if fname else f"کاربر {uid}"
                 telegram_handle = f"@{uname}" if uname else f"ID: {uid}"
 
@@ -283,8 +280,7 @@ def verify_login_widget_payload(payload: dict, bot_token: str, max_age_seconds: 
         return None
 
     pairs = sorted((k, str(v)) for k, v in data.items() if v is not None)
-    check_string = "
-".join(f"{k}={v}" for k, v in pairs)
+    check_string = "\n".join(f"{k}={v}" for k, v in pairs)
 
     secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
     computed_hash = hmac.new(secret_key, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
