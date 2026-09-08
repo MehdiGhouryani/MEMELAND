@@ -288,6 +288,10 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
 
 async def handle_signals_get(request: web.Request) -> web.Response:
     viewer = _resolve_user_session(request)
+    
+    # اگر هنوز سشن ایجاد نشده، بازدیدکننده پیش‌فرض با دسترسی عادی در نظر گرفته می‌شود
+    if not viewer:
+        viewer = {"telegram_id": None, "is_admin": False, "role": "guest"}
 
     try:
         limit = min(int(request.query.get("limit", 200)), 200)
@@ -299,11 +303,10 @@ async def handle_signals_get(request: web.Request) -> web.Response:
     channel = request.query.get("channel") or None
     q = request.query.get("q") or None
 
-    return web.json_response(
-        signals.get_feed(
-            limit=limit, offset=offset, status=status, channel=channel, q=q, viewer=viewer
-        )
+    data = signals.get_feed(
+        limit=limit, offset=offset, status=status, channel=channel, q=q, viewer=viewer
     )
+    return web.json_response(data)
 
 
 async def handle_signals_create(request: web.Request) -> web.Response:

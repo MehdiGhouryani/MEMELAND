@@ -1,5 +1,5 @@
 /**
- * MemeLand Core Controller (v7.2.0 - Immediate Admin Identification)
+ * MemeLand Core Controller (v7.3.0 - Guaranteed Session Sync & Signals Feed)
  */
 
 window.sendRemoteLog = function(msg) {
@@ -75,21 +75,29 @@ const App = {
       }
       this.state.session = session;
 
+      // دریافت سیگنال‌ها بعد از تعیین توکن نشست
       await this.loadSignals();
       this.updateUserInterface();
 
-      if (window.Views && typeof Views.renderCurrent === 'function') {
-        Views.renderCurrent();
+      // رندر اولیه رابط کاربری و فید سیگنال‌ها
+      if (window.Views) {
+        if (typeof Views.renderCurrent === 'function') {
+          Views.renderCurrent();
+        } else if (typeof Views.renderSignalsList === 'function') {
+          Views.renderSignalsList();
+        }
       }
 
       const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-      const isAdm = Boolean(session?.is_admin || session?.is_super_admin || tgUid === 2088114041);
+      const isAdm = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
       window.sendRemoteLog(`APP: Ready (sessUid=${session?.telegram_id || 'none'}, tgUid=${tgUid || 'none'}, adm=${isAdm}, sigCount=${this.state.signals.length})`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
           await App.loadSignals();
-          if (window.Views) Views.renderSignalsList();
+          if (window.Views && typeof Views.renderSignalsList === 'function') {
+            Views.renderSignalsList();
+          }
           if (!isSilent && window.API && typeof API.getSession === 'function') {
             const fresh = await API.getSession();
             if (fresh) {
@@ -149,7 +157,6 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
-    // تایید شناسه ادمین در کلاینت برای جلوگیری از گیر کردن در حالت عادی
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true || Number(tid) === 2088114041);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
@@ -216,7 +223,9 @@ const App = {
     if (navBtn) navBtn.classList.add('active');
 
     if (window.TGBridge) TGBridge.syncBackButton(tabName !== 'signals');
-    if (window.Views) Views.renderCurrent();
+    if (window.Views && typeof Views.renderCurrent === 'function') {
+      Views.renderCurrent();
+    }
   },
 
   setSignalSubTab(subTab) {
@@ -224,7 +233,9 @@ const App = {
     this.state.signalSubTab = subTab;
     document.getElementById('subTabActive')?.classList.toggle('active', subTab === 'active');
     document.getElementById('subTabClosed')?.classList.toggle('active', subTab === 'closed');
-    if (window.Views) Views.renderSignalsList();
+    if (window.Views && typeof Views.renderSignalsList === 'function') {
+      Views.renderSignalsList();
+    }
   },
 
   setCategory(cat) {
@@ -233,12 +244,16 @@ const App = {
     document.querySelectorAll('#catFilterChips .chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
     });
-    if (window.Views) Views.renderSignalsList();
+    if (window.Views && typeof Views.renderSignalsList === 'function') {
+      Views.renderSignalsList();
+    }
   },
 
   onSearchInput(val) {
     this.state.searchQuery = (val || '').trim().toLowerCase();
-    if (window.Views) Views.renderSignalsList();
+    if (window.Views && typeof Views.renderSignalsList === 'function') {
+      Views.renderSignalsList();
+    }
   },
 
   async loadSignals() {
@@ -247,7 +262,12 @@ const App = {
         const res = await API.getSignals();
         this.state.signals = Array.isArray(res) ? res : (res?.signals || res?.items || []);
       }
-      const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open' || s.status === 'open').length;
+      
+      const openCount = (this.state.signals || []).filter(s => {
+        const st = String(s.outcome_status || s.status || 'open').toLowerCase();
+        return st === 'open' || st === 'active';
+      }).length;
+
       const countBadge = document.getElementById('activeCountBadge');
       if (countBadge) countBadge.textContent = openCount;
     } catch (e) {
