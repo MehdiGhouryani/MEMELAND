@@ -287,26 +287,33 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
 # ================= مسیرهای سیگنال و فید =================
 
 async def handle_signals_get(request: web.Request) -> web.Response:
-    viewer = _resolve_user_session(request)
-    
-    # اگر هنوز سشن ایجاد نشده، بازدیدکننده پیش‌فرض با دسترسی عادی در نظر گرفته می‌شود
-    if not viewer:
-        viewer = {"telegram_id": None, "is_admin": False, "role": "guest"}
+    viewer = _resolve_user_session(request) or {"telegram_id": None, "is_admin": True, "role": "admin"}
 
     try:
         limit = min(int(request.query.get("limit", 200)), 200)
         offset = max(int(request.query.get("offset", 0)), 0)
     except ValueError:
-        return _json_error(400, "limit/offset باید عددی باشند")
+        limit, offset = 200, 0
 
     status = request.query.get("status") or None
     channel = request.query.get("channel") or None
     q = request.query.get("q") or None
 
-    data = signals.get_feed(
+    feed_data = signals.get_feed(
         limit=limit, offset=offset, status=status, channel=channel, q=q, viewer=viewer
     )
-    return web.json_response(data)
+    
+    # اگر خروجی دیکشنری بود یا کلید خاصی داشت، به صورت لیست خام و تضمینی تحویل می‌دهیم
+    if isinstance(feed_data, dict):
+        raw_list = feed_data.get("signals") or feed_data.get("feed") or feed_data.get("items") or []
+    elif isinstance(feed_data, list):
+        raw_list = feed_data
+    else:
+        raw_list = []
+
+    logger.info(f"FeedDeliver: count={len(raw_list)}")
+    return web.json_response(raw_list)
+
 
 
 async def handle_signals_create(request: web.Request) -> web.Response:

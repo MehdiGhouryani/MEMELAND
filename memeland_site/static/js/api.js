@@ -115,7 +115,7 @@ const API = {
     try {
       const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
       if (!resp.ok) {
-        this.log(`SignalsHTTPFail: status=${resp.status}`);
+        if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsHTTP: ${resp.status}`);
         return [];
       }
       const data = await resp.json();
@@ -124,16 +124,13 @@ const API = {
       if (Array.isArray(data)) {
         list = data;
       } else if (data && typeof data === 'object') {
-        if (Array.isArray(data.feed)) list = data.feed;
-        else if (Array.isArray(data.items)) list = data.items;
-        else if (Array.isArray(data.signals)) list = data.signals;
-        else if (Array.isArray(data.data)) list = data.data;
+        list = data.signals || data.feed || data.items || data.data || [];
       }
 
-      this.log(`SignalsOK: count=${list.length}`);
+      if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsFetched: count=${list.length}`);
       return list;
     } catch (e) {
-      this.log(`SignalsCatchErr: ${e.message}`);
+      if (window.sendRemoteLog) window.sendRemoteLog(`[API] SignalsErr: ${e.message}`);
       return [];
     }
   },

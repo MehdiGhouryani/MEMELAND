@@ -36,30 +36,28 @@ const Views = {
     const isClosed = App.state.signalSubTab === 'closed';
     const allSignals = App.state.signals || [];
 
+    // فیلتر صرفاً بر اساس وضعیت باز یا بسته بودن و جستجوی متنی
     const list = allSignals.filter(s => {
       const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
         ? (rawStatus === 'win' || rawStatus === 'loss' || rawStatus === 'closed')
         : (rawStatus === 'open' || rawStatus === 'active');
 
-      const rawChannel = String(s.channel || s.category || 'dex').toLowerCase();
-      const matchCat = App.state.category === 'all' || rawChannel === App.state.category;
-
       const coinName = String(s.coin || s.symbol || s.name || '').toLowerCase();
       const matchSearch = !App.state.searchQuery || coinName.includes(App.state.searchQuery.toLowerCase());
 
-      return matchStatus && matchCat && matchSearch;
+      return matchStatus && matchSearch;
     });
 
     if (window.sendRemoteLog) {
-      window.sendRemoteLog(`[VIEW] Render: tab=${App.state.signalSubTab}, cat=${App.state.category}, total=${allSignals.length}, filtered=${list.length}`);
+      window.sendRemoteLog(`[VIEW] Render: tab=${App.state.signalSubTab}, total=${allSignals.length}, filtered=${list.length}`);
     }
 
     if (list.length === 0) {
       listEl.innerHTML = `
         <div style="text-align:center; padding:44px 20px; color:var(--text-muted); font-size:12px;">
-          <div style="font-size:24px; margin-bottom:8px; opacity:0.6;">🔍</div>
-          سیگنالی در این دسته‌بندی یافت نشد.
+          <div style="font-size:28px; margin-bottom:8px; opacity:0.6;">⚡</div>
+          سیگنال فعالی در این بخش موجود نیست.
         </div>
       `;
       return;
