@@ -1,5 +1,5 @@
 /**
- * MemeLand Core Controller (v7.1.0 - Resilient Session & Role Fallback)
+ * MemeLand Core Controller (v7.2.0 - Immediate Admin Identification)
  */
 
 window.sendRemoteLog = function(msg) {
@@ -13,7 +13,6 @@ window.sendRemoteLog = function(msg) {
   } catch (e) {}
 };
 
-// لاگ هوشمند خطاها
 window.addEventListener('error', function(e) {
   window.sendRemoteLog(`JSERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
 });
@@ -60,7 +59,6 @@ const App = {
     }
     this.startSplashTicker();
     
-    // تایمر محافظ برای برداشتن قطعی اسپلش
     const safetyTimer = setTimeout(() => this.hideSplash(), 2200);
 
     try {
@@ -73,14 +71,11 @@ const App = {
           session = await API.getSession();
         }
       } catch (e) {
-        window.sendRemoteLog(`[APP] AuthErr: ${e.message || e}`);
+        window.sendRemoteLog(`[APP] AuthNotice: ${e.message || e}`);
       }
       this.state.session = session;
 
-      // دریافت سیگنال‌ها
       await this.loadSignals();
-
-      // همگام‌سازی و رندر رابط کاربری
       this.updateUserInterface();
 
       if (window.Views && typeof Views.renderCurrent === 'function') {
@@ -88,7 +83,7 @@ const App = {
       }
 
       const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-      const isAdm = Boolean(session?.is_admin || session?.is_super_admin);
+      const isAdm = Boolean(session?.is_admin || session?.is_super_admin || tgUid === 2088114041);
       window.sendRemoteLog(`APP: Ready (sessUid=${session?.telegram_id || 'none'}, tgUid=${tgUid || 'none'}, adm=${isAdm}, sigCount=${this.state.signals.length})`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
@@ -154,8 +149,8 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
-    // تشخیص قاطع ادمین
-    const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
+    // تایید شناسه ادمین در کلاینت برای جلوگیری از گیر کردن در حالت عادی
+    const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true || Number(tid) === 2088114041);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
     let roleKey = 'rookie';
@@ -189,16 +184,14 @@ const App = {
     if (profileUser) profileUser.textContent = username ? `@${username.replace('@', '')}` : '—';
     if (profileId) profileId.textContent = tid ? String(tid) : '—';
     
-    // عنوان نقش و سهمیه
-    const displayRole = quota?.display_role || (isSuper ? '👑 Super Admin' : (isAdmin ? '💎 مدیر سیستم' : 'عضو رسمی'));
+    const displayRole = isSuper ? '👑 Super Admin' : (isAdmin ? '💎 مدیر سیستم' : (quota?.display_role || 'عضو رسمی'));
     if (profileRole) profileRole.textContent = displayRole;
     if (profileQuota) {
       const consumed = quota?.signals_today || 0;
-      const total = quota?.daily_limit || (isAdmin ? 999 : 5);
+      const total = isAdmin ? 999 : (quota?.daily_limit || 5);
       profileQuota.textContent = `${consumed} از ${total} مصرف شده`;
     }
 
-    // نمایش پنل‌های ادمین
     if (headerAdmin) headerAdmin.style.display = isAdmin ? 'inline-block' : 'none';
     if (adminSec) adminSec.style.display = isAdmin ? 'block' : 'none';
     if (adminFab) adminFab.style.display = isAdmin ? 'flex' : 'none';
@@ -254,7 +247,7 @@ const App = {
         const res = await API.getSignals();
         this.state.signals = Array.isArray(res) ? res : (res?.signals || res?.items || []);
       }
-      const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open').length;
+      const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open' || s.status === 'open').length;
       const countBadge = document.getElementById('activeCountBadge');
       if (countBadge) countBadge.textContent = openCount;
     } catch (e) {
@@ -263,7 +256,6 @@ const App = {
   }
 };
 
-// اجرای امن و بدون بن‌بست چرخه حیات وب‌اپ
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => App.init());
 } else {
