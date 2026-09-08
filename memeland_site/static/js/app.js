@@ -1,24 +1,31 @@
 /**
- * MemeLand Core Controller (v7.0.0 - Stealth Design & Native Haptics)
+ * MemeLand Core Controller (v7.0.0 - Stealth Design & Resilient Lifecycle)
  */
 
 window.sendRemoteLog = function(msg) {
-  // Only send critical runtime errors to prevent server log inflation
-  if (!msg || (!msg.startsWith('JS-ERR:') && !msg.startsWith('AUTH_CRIT:'))) return;
+  if (!msg) return;
   try {
     fetch('/site/client-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msg: msg })
+      body: JSON.stringify({ msg: String(msg) })
     }).catch(() => {});
   } catch (e) {}
 };
 
+// دریافت هوشمند تمامی خطاهای ران‌تایم و پرامیس‌های ناموفق
 window.addEventListener('error', function(e) {
-  window.sendRemoteLog(`JS-ERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
+  window.sendRemoteLog(`JSERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+  const reason = e.reason ? (e.reason.message || String(e.reason)) : 'Unknown rejection';
+  window.sendRemoteLog(`JSERR: Promise - ${reason}`);
 });
 
 const App = {
+  _initialized: false,
+
   state: {
     currentTab: 'signals',
     signalSubTab: 'active',
@@ -39,15 +46,22 @@ const App = {
       if (type === 'selection') window.Telegram.WebApp.HapticFeedback.selectionChanged();
       else if (type === 'success' || type === 'error') window.Telegram.WebApp.HapticFeedback.notificationOccurred(type);
       else window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-    } else if (window.TGBridge) {
+    } else if (window.TGBridge && typeof TGBridge.haptic === 'function') {
       TGBridge.haptic(type);
     }
   },
 
   async init() {
-    if (window.TGBridge) TGBridge.init();
+    if (this._initialized) return;
+    this._initialized = true;
+
+    if (window.TGBridge && typeof TGBridge.init === 'function') {
+      TGBridge.init();
+    }
     this.startSplashTicker();
-    const safetyTimer = setTimeout(() => this.hideSplash(), 2800);
+    
+    // تایمر ایمنی جهت تضمین عدم گیر کردن اسپلش در صورت کندی اینترنت
+    const safetyTimer = setTimeout(() => this.hideSplash(), 2200);
 
     try {
       let session = null;
@@ -59,18 +73,24 @@ const App = {
           session = await API.getSession();
         }
       } catch (e) {
-        console.warn('Session fetch warning:', e);
+        console.warn('Session init notice:', e);
       }
       this.state.session = session;
 
       await this.loadSignals();
       this.updateUserInterface();
-      Views.renderCurrent();
+
+      if (window.Views && typeof Views.renderCurrent === 'function') {
+        Views.renderCurrent();
+      }
+
+      // لاگ موفقیت اجرای کل اپ
+      window.sendRemoteLog(`APP: Ready (uid=${session?.telegram_id || 'guest'}, adm=${Boolean(session?.is_admin)})`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
           await App.loadSignals();
-          Views.renderSignalsList();
+          if (window.Views) Views.renderSignalsList();
           if (!isSilent && window.API && typeof API.getSession === 'function') {
             const fresh = await API.getSession();
             if (fresh) {
@@ -81,10 +101,10 @@ const App = {
         });
       }
     } catch (err) {
-      window.sendRemoteLog(`JS-ERR: Init ${err.message || err}`);
+      window.sendRemoteLog(`JSERR: Init ${err.message || err}`);
     } finally {
       clearTimeout(safetyTimer);
-      setTimeout(() => this.hideSplash(), 250);
+      setTimeout(() => this.hideSplash(), 150);
     }
   },
 
@@ -96,13 +116,16 @@ const App = {
     this._splashInterval = setInterval(() => {
       idx = (idx + 1) % steps.length;
       statusEl.textContent = steps[idx];
-    }, 650);
+    }, 600);
   },
 
   hideSplash() {
     if (this._splashInterval) clearInterval(this._splashInterval);
     const splash = document.getElementById('splashScreen');
-    if (splash) splash.classList.add('fade-out');
+    if (splash) {
+      splash.classList.add('fade-out');
+      setTimeout(() => { splash.style.display = 'none'; }, 350);
+    }
   },
 
   updateUserInterface() {
@@ -127,16 +150,21 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
-    // تشخیص قاطع وضعیت ادمین
     const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
+    // تعیین دقیق کلید تم نقش با حفظ دسترسی‌های VIP Helper و سطوح مختلف
     let roleKey = 'rookie';
-    if (isSuper) roleKey = 'super_admin';
-    else if (isAdmin) roleKey = 'admin';
-    else if (quota?.role_key && quota.role_key !== 'rookie') roleKey = quota.role_key;
+    if (isSuper) {
+      roleKey = 'super_admin';
+    } else if (quota?.role_key && quota.role_key !== 'rookie') {
+      roleKey = quota.role_key;
+    } else if (s?.role && s.role !== 'member') {
+      roleKey = s.role;
+    } else if (isAdmin) {
+      roleKey = 'admin';
+    }
 
-    // رندر هوشمند آواتار
     if (avatarContainer) {
       if (photoUrl) {
         avatarContainer.innerHTML = `<img src="${photoUrl}" alt="${displayName}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.outerHTML=window.AvatarRenderer ? AvatarRenderer.getAvatarSvg('${roleKey}') : ''">`;
@@ -167,6 +195,12 @@ const App = {
   switchTab(tabName) {
     this.haptic('selection');
     this.state.currentTab = tabName;
+
+    // بستن خودکار هرگونه شیت باز هنگام جابجایی تب جهت ممانعت از شناور ماندن دکمه‌های تلگرام
+    if (window.Views && typeof Views.closeBottomSheet === 'function') {
+      Views.closeBottomSheet();
+    }
+
     document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.bottom-nav .nav-btn').forEach(el => el.classList.remove('active'));
 
@@ -178,7 +212,7 @@ const App = {
     if (navBtn) navBtn.classList.add('active');
 
     if (window.TGBridge) TGBridge.syncBackButton(tabName !== 'signals');
-    Views.renderCurrent();
+    if (window.Views) Views.renderCurrent();
   },
 
   setSignalSubTab(subTab) {
@@ -186,7 +220,7 @@ const App = {
     this.state.signalSubTab = subTab;
     document.getElementById('subTabActive')?.classList.toggle('active', subTab === 'active');
     document.getElementById('subTabClosed')?.classList.toggle('active', subTab === 'closed');
-    Views.renderSignalsList();
+    if (window.Views) Views.renderSignalsList();
   },
 
   setCategory(cat) {
@@ -195,18 +229,19 @@ const App = {
     document.querySelectorAll('#catFilterChips .chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('onclick')?.includes(`'${cat}'`));
     });
-    Views.renderSignalsList();
+    if (window.Views) Views.renderSignalsList();
   },
 
   onSearchInput(val) {
     this.state.searchQuery = (val || '').trim().toLowerCase();
-    Views.renderSignalsList();
+    if (window.Views) Views.renderSignalsList();
   },
 
   async loadSignals() {
     try {
       if (window.API && typeof API.getSignals === 'function') {
-        this.state.signals = await API.getSignals();
+        const res = await API.getSignals();
+        this.state.signals = Array.isArray(res) ? res : (res?.signals || res?.items || []);
       }
       const openCount = (this.state.signals || []).filter(s => s.outcome_status === 'open').length;
       const countBadge = document.getElementById('activeCountBadge');
@@ -217,4 +252,9 @@ const App = {
   }
 };
 
-window.addEventListener('DOMContentLoaded', () => App.init());
+// اجرای امن و بدون بن‌بست چرخه حیات وب‌اپ
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => App.init());
+} else {
+  App.init();
+}
