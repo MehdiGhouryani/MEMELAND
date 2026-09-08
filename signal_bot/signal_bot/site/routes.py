@@ -157,7 +157,8 @@ async def handle_client_log(request: web.Request) -> web.Response:
     try:
         data = await request.json()
         msg = str(data.get("msg", ""))
-        if msg and not any(skip in msg for x in ("PTR_INIT", "PTR: Triggered", "IMG_OK") if x in msg):
+        ignored_tags = ("PTR_INIT", "PTR: Triggered", "IMG_OK")
+        if msg and not any(tag in msg for tag in ignored_tags):
             logger.info(f"[JS] {msg}")
     except Exception:
         pass
