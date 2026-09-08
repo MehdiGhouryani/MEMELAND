@@ -1,319 +1,3 @@
-
-Conversation with Gemini
-کد و تماما بررسی کن و ایرادات و پیدا کن
-
-
-
-باگ‌ها و ایرادات باقی‌مانده نیازمند اصلاح:
-
-
-
-خطای ۴۰۳ در انتشار مقاله (ART_PUB_ERR: HTTP 403):
-
-توابع fetch در modals.js مقدار توکن احراز هویت را از کلیدی می‌خوانند که خالی است (UploadAuthWarn: session not found in header)؛ در نتیجه اندپوینت handle_content_post در routes.py درخواست را رد می‌کند. باید هماهنگ‌سازی توکن با شناسه تلگرام (telegram_id) به صورت فال‌بک امن روی سشن جاری نهایی شود.
-
-پاک‌سازی لاگ‌های حجیم کلاینت:
-
-ارسال پی‌درپی لاگ‌های رفرش و همگام‌سازی از کلاینت به سرور باید پس از تست نهایی سبک‌سازی شود تا لاگ فایل سرور متورم نگردد.
-
-برای رفع ریشه‌ای خطای ۴۰۳ (ART_PUB_ERR: HTTP 403) هنگام ارسال مقالات و همچنین مدیریت ترافیک لاگ‌های کلاینت، ایرادات کلیدی و نحوه اصلاح آن‌ها به شرح زیر است:
-
-۱. رفع خطای ۴۰۳ در انتشار مقاله (هماهنگ‌سازی توکن و سشن)
-
-علت اصلی این خطا عدم تطابق نام کلید هدر یا سشن احراز هویت میان فرانت‌اند و بک‌اند است؛ وقتی توکن از کلید اشتباه یا منقضی خوانده شود، هدر خالی مانده و بک‌اند خطای ۴۰۳ صادر می‌کند.  
-ZIP
-
-اصلاح کلاینت (memeland_site/static/js/modals.js):
-هنگام ارسال فرم یا درخواست انتشار (fetch به /api/content یا متد مربوطه)، کلیدهای ذخیره‌سازی توکن را با ترتیب فال‌بک بررسی کنید تا هدر بدون مقدار ارسال نشود:
-
-JavaScript
-const token = localStorage.getItem('auth_token') || 
-              sessionStorage.getItem('auth_token') || 
-              window.Telegram?.WebApp?.initData || '';
-
-const headers = {
-  'Content-Type': 'application/json',
-};
-
-if (token) {
-  headers['Authorization'] = `Bearer ${token}`;
-  headers['X-Telegram-Init-Data'] = token; // برای سازگاری کامل با بک‌اند وب‌اپ
-}
-پشتیبانی از فال‌بک امن بر اساس telegram_id در بک‌اند (signal_bot/site/routes.py یا auth.py):
-در اندپوینت handle_content_post، اعتبارسنجی را به‌گونه‌ای تنظیم کنید که اگر هدر بیرر خالی بود ولی سشن معتبر حاوی telegram_id یا داده‌های وب‌اپ کلاینت وجود داشت، دسترسی مجاز شناخته شود:  
-ZIP
-
-Python
-def verify_request_auth(request):
-    # ۱. بررسی هدر مستقیم
-    auth_header = request.headers.get("Authorization") or request.headers.get("X-Telegram-Init-Data")
-    user_id = None
-    if auth_header:
-        user_id = parse_and_validate_token(auth_header)
-
-    # ۲. فال‌بک به سشن جاری
-    if not user_id and "telegram_id" in request.session:
-        user_id = request.session.get("telegram_id")
-
-    if not user_id:
-        raise HTTPException(status_code=403, detail="ART_PUB_ERR: HTTP 403 - session not found in header")
-
-    return user_id
-۲. بهینه‌سازی و سبک‌سازی لاگ‌های کلاینت
-
-برای جلوگیری از متورم شدن فایل لاگ سرور به دلیل ارسال مکرر لاگ‌های pull_to_refresh و سینک دوره‌ای:  
-ZIP
-
-اصلاح مانیتورینگ رفرش (pull_refresh.js و api.js):
-
-لاگ‌های دیباگ لوکال را فقط در کنسول مرورگر نگه دارید و از متد POST /api/logs برای وقایع عادی (مانند هر لمس یا اسکرول برای رفرش) صرف‌نظر کنید.
-
-ارسال به سرور را منحصر به کدهای وضعیت غیرمنتظره (۵xx یا کرش‌های کلاینت) کنید.
-
-مکانیزم Debounce / Throttling:
-اگر ثبت وضعیت‌ها ضروری است، ارسال لاگ‌ها را با ایجاد یک صف کلاینت به صورت تجمیعی (Batch) هر ۶۰ ثانیه یک‌بار یا صرفاً در صورت بروز خطا فلاش (Flush) کنید تا تماس‌های مکرر با سرور حذف شوند.
-
-خب فعلا زوده بریم سراغ کد
-
-اول بیشتر بررسی کن
-
-
-
-درضمن UI/UX باید بهتر بشه
-
-و هم ساده تر بشه
-
-و هم تحلیل کن ی بخشی شاید بتونیم ی حالت انیمیشنی اضافه کنیم
-
-
-
-سایز فونت و ... همه استاندارد بشه
-
-رنگ بندی استاندارد بشه
-
-
-
-و ..
-
-
-
-فقط تحلیل کن
-
-نمونه مشابه ک الگو گرفتی ازش و سایتشو بهم بده
-
-بررسی ساختار فعلی پروژه (memeland_site و ارتباط آن با مینی‌اپ و بات تلگرام) نشان می‌دهد که هسته برنامه برای ارائه سیگنال‌های میم‌کوین، رتبه‌بندی تریدرها (Dossier/Leaderboard)، پاداش‌ها و انتشار مقالات طراحی شده است.  
-ZIP
-
-تحلیل نقاط ضعف فعلی UI/UX
-شلوغی بصری و بار شناختی بالا: ماژول‌های هم‌زمان (تب‌های مختلف، کارت‌های سیگنال، جزئیات دوسیه، پاپ‌آپ‌های ارسال مقاله) باعث سردرگمی کاربر در ابعاد کوچک موبایل می‌شوند.
-
-نبود سلسله‌مراتب تایپوگرافی مشخص: تفاوت اندازه، وزن و فاصله خطوط بین برچسب‌ها، تیترها و قیمت‌ها یکدست نیست و خوانایی داده‌های مالی را در نگاه اول کاهش می‌دهد.
-
-تداخل رنگی و کنتراست ناپایدار: استفاده از ترکیب‌های رنگی متنوع برای وضعیت‌های سود/زیان، نقش‌ها (roles.css) و کارت‌ها بدون پالت محدود و قاعده‌مند، حس یکپارچگی محصول را تضعیف کرده است.  
-ZIP
-
-حرکات خشک و بی‌روح: تعویض تب‌ها، باز شدن مودال‌ها و کشیدن برای رفرش (pull_refresh) بدون بازخورد حرکتی نرم اجرا می‌شوند.  
-ZIP
-
-برنامه بازطراحی و استانداردسازی (UI/UX)
-ساده‌سازی جریان کاری (Simplification)
-
-معماری مبتنی بر کارت‌های مجزا: هر سیگنال یا تریدر در قالب کارت‌های با حاشیه نرم و فاصله‌گذاری استاندارد (۸ پوینت گرید).
-
-کاهش کلیک‌ها برای اقدامات کلیدی: ترکیب دکمه‌های اقدام (مانند کپی توکن، بررسی سود، ارسال مقاله) در نوار دسترسی سریع پایین صفحه (Bottom Sheet / Floating Bar).
-
-سیستم رنگ‌بندی استاندارد (Dark / Web3 First)
-
-پس‌زمینه اصلی (Background): تیره عمیق متمایل به زغالی (#0B0E14 یا #0F121C) جهت کاهش مصرف باتری در گوشی‌های اولد و همخوانی با محیط تلگرام.
-
-رنگ سطوح (Surfaces/Cards): تیره نرم با شفافیت کم (#161B26 با حاشیه ظریف rgba(255, 255, 255, 0.08)).
-
-رنگ تأکیدی (Brand Accent): ارغوانی/بنفش نئونی مدرن (#7C3AED یا آبی الکتریک #3B82F6) برای دکمه‌های اصلی و تب فعال.
-
-رنگ‌های وضعیت (Status): سبز نعنایی استاندارد (#10B981) برای سود و ورودی مثبت؛ قرمز مرجانی (#EF4444) برای ضرر و توقف ضرر.
-
-تایپوگرافی استاندارد
-
-فونت فارسی/عربی پیشنهادی: دانا (Dana) یا وزیرمتن (Vazirmatn) با ارقام فارسی استاندارد برای اعداد مالی.
-
-مقیاس اندازه فونت:
-
-تیتر اصلی: 18px تا 20px (وزن Bold)
-
-ارقام مالی، قیمت‌ها و درصدها: 15px تا 16px (وزن Semi-Bold)
-
-متن بدنه و توضیحات: 13px تا 14px (وزن Regular)
-
-برچسب‌ها و متادیتا: 11px تا 12px (وزن Medium با رنگ خاکستری ثانویه #94A3B8)
-
-بخش‌های مستعد افزودن انیمیشن و Micro-interactions
-میکروانیمیشن جهش ارقام و سود (Ticker / Flip Counter):
-
-هنگام به‌روزرسانی زنده قیمت توکن‌ها یا درصد سود/زیان، اعداد به نرمی با ترنزیشن عمودی ورق بخورند تا تغییرات زنده داده‌ها بدون بار اضافی حس شود.
-
-انیمیشن وضعیت موفقیت انتشار مقاله و پاداش:
-
-پس از ثبت مقاله یا دریافت امتیاز پاداش، به جای مودال خشک، از یک افکت ذره‌ای ظریف (Confetti / Pulse Ring) همراه با Haptic Feedback تلگرام استفاده شود.
-
-کارت‌های لمسی (Spring / Haptic Touch):
-
-فشرده شدن نرم کارت‌ها در زمان لمس (scale(0.98) با ترنزیشن بانس الاستیک).
-
-پول‌تو‌رفرش با آیکون شناور:
-
-جایگزینی اسپینر معمولی با یک المان چرخان نرم که با کشیدن انگشت کش می‌آید و پس از رهاسازی یک پالس نوری ملایم می‌دهد.
-
-الگوهای استاندارد و نمونه‌های مشابه
-برای اینکه دید بصری دقیق‌تری داشته باشیم، این سه نمونه برجسته جهانی دقیقاً نیازهای پلتفرم را پوشش می‌دهند:
-
-GMGN.ai (gmgn.ai):
-بهترین نمونه برای نمایش سیگنال‌های میم‌کوین، ترندهای توکن و ردیابی کیف‌پول تریدرها در تم تیره با استفاده بهینه از فضای صفحه موبایل.
-
-Photon (photon-sol.tinyastro.io):
-الگوی فوق‌العاده برای سادگی، کنتراست بالای رنگ‌های سبز/قرمز روی پس‌زمینه تیره و تعاملات سریع لحظه‌ای بدون افت فریم.
-
-DEXTools (dextools.io / نسخه موبایل):
-مرجع مناسب برای نحوه چینش اطلاعات آماری، رده‌بندی توکن‌ها و نمایش وضعیت سود/زیان در ابعاد فشرده.
-
-جهت تنظیم دقیق‌تر مسیر، تمایل دارید کدام بخش در اولویت طراحی و انیمیشن قرار گیرد: کارت‌های نمایش سیگنال و سود/زیان یا داشبورد پروفایل/مودال ارسال محتوا؟
-
-خوبه ولی بازم تحلیل بیشتری بکن
-
-بخصوص برای نرم تر کردن ux و رنگ بندی کمی ساده تر ولی شیک تر
-
-
-
-و تماما جمع بندی کن با موارد قبل
-
-
-
-و مشخص کن کدوم فایلا نیاز ب اصلاح و بازنویسی دارن
-
-
-
-اینطوری پیش میریم:
-
-تو فایل های هدف و از من درخاست میکنی
-
-من ارسال میکنم
-
-تو مطالعه میکنی کدهاشو
-
-و سپس بازنویسی میکنی مطابق انچه باید انجام بگیره
-
-و من کد و کپی میکنم و جایگزین میکنم
-
-جمع‌بندی تحلیلی جامع (UI/UX، معماری بصری و عملکردی)
-برای تبدیل این وب‌اپ تلگرامی به یک محصول سطح بالا (مشابه استاندارد برنامه‌های ترند مثل Axiom, Photon و Telegram Mini-Apps بومی)، ترکیب زیبایی مینیمال با تعاملات روان فیزیکی (Fluid Physics) ضروری است.
-
-۱. اصلاح پالت رنگی (مینیمال، لوکس و باکلاس)
-رنگ‌های نئونی تند در استفاده طولانی‌مدت چشم را خسته می‌کنند و ظاهر آماتور به وب‌اپ می‌دهند. پالت پیشنهادی جدید مبتنی بر تضادهای مات (Matte & Stealth Dark) است:
-
-Base Layer (پس‌زمینه اصلی): #090A0F (مشکی عمیق با ته‌رنگ نامحسوس سرمه‌ای/کبالت).
-
-Surface Layer (کارت‌ها و پنل‌ها): #12151F همراه با حاشیه بسیار باریک و نرم border: 1px solid rgba(255, 255, 255, 0.05).
-
-Accent Primary (برند و اکشن اصلی): آبی کبالت لوکس #3861FB یا ارغوانی سلطنتی عمیق #6366F1 (به‌جای رنگ‌های جیغ و کورکننده).
-
-Success / Bullish (سود و رشد): سبز متوازن زمردی #00C087 (خوانایی عالی روی مشکی بدون زنندگی).
-
-Danger / Bearish (ضرر و خطا): قرمز مرجانی نرم #F43F5E.
-
-Muted / Secondary Text: خاکستری سربی #8A93A6 برای اطلاعات جانبی و تایم‌استمپ‌ها.
-
-۲. نرم‌تر کردن تجربه کاربری (Fluid UX & Micro-interactions)
-بازخورد لمسی (Telegram Haptic Feedback):
-
-در زمان فشردن هر تب، ثبت سیگنال یا رفرش موفق، استفاده از وب‌اپ ای‌پی‌آی تلگرام: window.Telegram.WebApp.HapticFeedback.impactOccurred('light').
-
-انیمیشن Bottom-Sheet برای مودال‌ها:
-
-مودال‌های فعلی به شکل پنجره‌های سنتی دسکتاپ باز می‌شوند. تمام مودال‌ها باید به کارت کشویی از پایین (BottomSheet / Drawer) با حرکت اینرسی ملایم تبدیل شوند.
-
-ترنزیشن کارت‌ها (Spring Physics):
-
-کارت‌های سیگنال و دوسیه هنگام لمس باید اثر فرورفتگی فیزیکی ملایم (transform: scale(0.98)) با انیمیشن cubic-bezier(0.2, 0.8, 0.2, 1) داشته باشند.
-
-اسکلتون لودینگ (Skeleton Loading Shimmer):
-
-حذف تمام لودرهای چرخشی خشک و جایگزینی با اسکلتون گرادینت متحرک در زمان واکشی داده‌ها تا صفحه هرگز سفید یا خالی نماند.
-
-۳. تجمیع با باگ‌های فنی قبلی
-خطای ۴۰۳ و رفع آن: استانداردسازی کلاینت برای الصاق تضمینی توکن احراز هویت وب‌اپ تلگرام و رفع ناسازگاری هدرها در سابمیت مقالات.
-
-سبک‌سازی لاگ‌ها: حذف تماس‌های متوالی کلاینت به سرور (POST /api/logs) هنگام رفرش و کشیدن صفحه، و محصور کردن آن فقط به خطاهای غیرمنتظره.
-
-۴. فایل‌های هدف برای بازنویسی گام‌به‌گام
-پروژه به چند بخش اصلی تفکیک می‌شود تا به نوبت و منظم پیش برویم:
-
-لایه استایل و طراحی پایه (UI Foundation):
-
-memeland_site/static/css/style.css
-
-memeland_site/static/css/pull_refresh.css
-
-memeland_site/static/css/roles.css
-
-لایه تعاملات و مودال‌ها (UX & Auth Fix):
-
-memeland_site/static/js/modals.js (رفع خطای ۴۰۳ + طراحی مدرن شیت‌ها)
-
-memeland_site/static/js/pull_refresh.js (حذف لاگ‌های اضافی + انیمیشن فنری)
-
-لایه لاجیک و نمایش (Views & Rendering):
-
-memeland_site/static/js/views.js
-
-memeland_site/static/js/dossier.js
-
-لایه روت‌ها و بک‌اند در صورت نیاز به هماهنگی سشن:
-
-signal_bot/site/routes.py
-
-signal_bot/site/auth.py
-
-گام نخست:
-برای شروع فاز اول (پایه‌ریزی استایل جدید، تایپوگرافی، پالت شیک و انیمیشن‌های نرم)، لطفاً محتوای فایل زیر را ارسال کنید:
-
-👉 memeland_site/static/css/style.css
-
-فایل style.css بر اساس اصول طراحی مدرن و مینیمال (Dark Stealth) کامپایل و آماده شد:
-
-CSS icon
-style
- CSS 
-تغییرات و بهینه‌سازی‌های اعمال‌شده در style.css:
-پالت رنگی مینیمال و شیک (Stealth Mode):
-
-جایگزینی رنگ‌های جیغ و نئونی (صورتی و فیروزه‌ای تند) با پالت مات و لوکس مبتنی بر مشکی عمیق (#090A0F) و رنگ تأکیدی ایندیگو (#6366F1) همراه با سبز زمردی استاندارد (#10B981) و قرمز مرجانی نرم (#F43F5E).
-
-ارتقای تایپوگرافی و فواصل گرید:
-
-تنظیم دقیق فواصل و سلسله‌مراتب ابعاد فونت‌ها برای سازگاری کامل با محیط Telegram Mini-App.
-
-افزایش ملایم ارتفاع هدر و نوار پایین (48px و 58px) برای لمس راحت‌تر با انگشت (Thumb-friendly).
-
-انیمیشن‌های فنری و فیزیکی (Fluid Spring Physics):
-
-افزودن متغیر تعاملی --spring-ease (cubic-bezier(0.16, 1, 0.3, 1)) به تمامی کارت‌ها، دکمه‌ها و چیپ‌ها.
-
-اثر مقیاس لمسی ملایم (scale(0.985) و scale(0.95)) روی دکمه‌ها و چیپ‌ها برای شبیه‌سازی اپلیکیشن‌های بومی iOS/Android.
-
-شیت کشویی (Bottom-Sheet) و مودال‌ها:
-
-ترنزیشن بسیار نرم برای بالا آمدن دراور از پایین همراه با سایه عمیق و بلور شیشه‌ای سبک.
-
-گام بعدی:
-برای ادامه روند استانداردسازی انیمیشن‌ها و سبک‌سازی لاگ‌ها، لطفاً فایل زیر را ارسال کنید:
-
-👉 memeland_site/static/css/pull_refresh.css
-(همراه با آن اگر مایل بودید می‌توانید memeland_site/static/js/pull_refresh.js را هم بفرستید تا استایل و لاجیک رفرش بدون ارسال لاگ‌های حجیم هم‌زمان سینک شوند).
-
-
-
-
-Gemini is AI and can make mistakes, including about people. Your privacy & GeminiOpens in a new window
-
 /* ==========================================================================
    MemeLand Hub - Modern Stealth & Minimal Design System (v7.0.0)
    ========================================================================== */
@@ -322,9 +6,9 @@ Gemini is AI and can make mistakes, including about people. Your privacy & Gemin
   /* Stealth Dark Palette */
   --bg: #090a0f;
   --bg-surface: #12151f;
-  --bg-card: rgba(18, 21, 31, 0.85);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-focus: rgba(99, 102, 241, 0.4);
+  --bg-card: rgba(18, 21, 31, 0.88);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-focus: rgba(99, 102, 241, 0.45);
 
   /* Typography */
   --text: #f1f5f9;
@@ -333,7 +17,7 @@ Gemini is AI and can make mistakes, including about people. Your privacy & Gemin
 
   /* Sophisticated Accents */
   --accent: #6366f1;           /* Deep Indigo Accent */
-  --accent-glow: rgba(99, 102, 241, 0.2);
+  --accent-glow: rgba(99, 102, 241, 0.22);
   --accent-light: #818cf8;
   --gold: #f59e0b;
   --red: #f43f5e;              /* Coral Red */
@@ -506,7 +190,8 @@ body {
   to { opacity: 0.95; }
 }
 
-.text-teal { color: var(--accent); }
+.text-teal { color: var(--accent-light); }
+.text-gold { color: var(--gold); }
 
 /* ==========================================================================
    Header (48px Native Sleek)
@@ -518,7 +203,7 @@ body {
   left: 0;
   right: 0;
   height: var(--header-height);
-  background: rgba(9, 10, 15, 0.88);
+  background: rgba(9, 10, 15, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
@@ -608,7 +293,7 @@ body {
 }
 
 .switch-btn.active {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
@@ -750,7 +435,7 @@ body {
 }
 
 .roi-badge {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
   font-family: 'JetBrains Mono';
   padding: 3px 8px;
@@ -898,7 +583,7 @@ body {
   right: 0;
   height: calc(var(--nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: rgba(9, 10, 15, 0.92);
+  background: rgba(9, 10, 15, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border);
@@ -1023,7 +708,7 @@ body {
 }
 
 /* ==========================================================================
-   Cards & Profile Modules
+   Cards & Profile Modules (Aligned with index.html)
    ========================================================================== */
 
 .card {
@@ -1034,28 +719,74 @@ body {
   margin-bottom: 12px;
 }
 
+.profile-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
 .profile-header {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
-.profile-avatar {
-  font-size: 34px;
-  width: 56px;
-  height: 56px;
+/* فریم آواتار مدرن و بج شناور */
+.avatar-frame {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
+  min-height: 60px;
   border-radius: 50%;
   background: var(--bg-surface);
+  border: 2px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
+  overflow: visible;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.avatar-frame #avatarSvgContainer {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-badge-mini {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .profile-name {
   font-size: 15px;
   font-weight: 700;
+  color: var(--text);
 }
 
 .profile-username {
@@ -1065,20 +796,51 @@ body {
 
 .profile-status-row {
   border-top: 1px solid var(--border);
-  padding-top: 12px;
+  padding-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: 12px;
 }
 
 .status-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 .status-label {
   color: var(--text-muted);
+}
+
+.status-val {
+  font-weight: 600;
+}
+
+.profile-role-title {
+  font-weight: 700;
+}
+
+/* پنل کنترل ادمین */
+.admin-box {
+  background: var(--bg-card);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.admin-box-title {
+  font-size: 12.5px;
+  color: var(--gold);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.admin-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 /* ==========================================================================
@@ -1126,11 +888,6 @@ body {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-.btn-teal {
-  background: var(--green);
-  color: #090a0f;
-}
-
 .tab-view {
   display: none;
   padding: 12px 14px;
@@ -1144,19 +901,6 @@ body {
 @keyframes tabFade {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-.admin-actions-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.admin-box-title {
-  font-size: 12px;
-  color: var(--gold);
-  font-weight: 700;
 }
 
 .modal-overlay {
@@ -1249,6 +993,3 @@ body {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
-style.css
-style.css
-Loading style.css.Displaying style.css.
