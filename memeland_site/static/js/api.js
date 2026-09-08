@@ -1,5 +1,5 @@
 /**
- * MemeLand API Service & Session Manager (v7.2.0 - Direct Telegram Auth Fallback)
+ * MemeLand API Service & Session Manager (v7.3.5 - Deep Feed Parser & Diagnostics)
  */
 
 const API = {
@@ -78,7 +78,7 @@ const API = {
         });
         if (resp.ok) {
           authData = await resp.json();
-          this.log(`AuthSuccess: endpoint=${url} uid=${authData.telegram_id || uid} adm=${Boolean(authData.is_admin)}`);
+          this.log(`AuthSuccess: url=${url} uid=${authData.telegram_id || uid} adm=${Boolean(authData.is_admin)}`);
           break;
         }
       } catch (err) {}
@@ -114,12 +114,26 @@ const API = {
   async getSignals() {
     try {
       const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
-      if (!resp.ok) return [];
+      if (!resp.ok) {
+        this.log(`SignalsHTTPFail: status=${resp.status}`);
+        return [];
+      }
       const data = await resp.json();
-      const items = Array.isArray(data) ? data : (data && data.items ? data.items : (data.signals || []));
-      this.log(`SignalsLoaded: count=${items.length}`);
-      return items;
+      
+      let list = [];
+      if (Array.isArray(data)) {
+        list = data;
+      } else if (data && typeof data === 'object') {
+        if (Array.isArray(data.feed)) list = data.feed;
+        else if (Array.isArray(data.items)) list = data.items;
+        else if (Array.isArray(data.signals)) list = data.signals;
+        else if (Array.isArray(data.data)) list = data.data;
+      }
+
+      this.log(`SignalsOK: count=${list.length}`);
+      return list;
     } catch (e) {
+      this.log(`SignalsCatchErr: ${e.message}`);
       return [];
     }
   },
