@@ -1,5 +1,5 @@
 /**
- * MemeLand Views & Feed Renderer (v7.1.0 - Robust Filtering & Diagnostic Logs)
+ * MemeLand Views & Feed Renderer (v7.2.0 - 2-Column Grid & Reader Mode)
  */
 
 const Views = {
@@ -23,7 +23,7 @@ const Views = {
       } else {
         window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
       }
-    } else if (window.TGBridge && typeof TGBridge.haptic === 'function') {
+    } else if (window.TGBridge) {
       TGBridge.haptic(type);
     }
   },
@@ -36,7 +36,6 @@ const Views = {
     const isClosed = App.state.signalSubTab === 'closed';
     const allSignals = App.state.signals || [];
 
-    // فیلتر منعطف بر اساس وضعیت‌های مختلف ثبت‌شده در دیتابیس (open/active/closed/win/loss)
     const list = allSignals.filter(s => {
       const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
@@ -52,7 +51,6 @@ const Views = {
       return matchStatus && matchCat && matchSearch;
     });
 
-    // لاگ تشخیصی برای مانیتورینگ تعداد سیگنال‌ها در ترمینال سرور
     if (window.sendRemoteLog) {
       window.sendRemoteLog(`[VIEW] Render: tab=${App.state.signalSubTab}, cat=${App.state.category}, total=${allSignals.length}, filtered=${list.length}`);
     }
@@ -121,7 +119,8 @@ const Views = {
     if (!s) return;
 
     const session = App.state.session;
-    const isAdmin = Boolean(session && (session.role === 'admin' || session.is_admin === true || session.is_super_admin === true));
+    const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
     const body = document.getElementById('sheetContent');
     if (!body) return;
 
@@ -152,7 +151,6 @@ const Views = {
 
       ${s.note ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${s.note}</p>` : ''}
 
-      <!-- دکمه فال‌بک مرورگر دسکتاپ خارج از تلگرام -->
       ${(!window.Telegram?.WebApp?.initData && buyLink) ? `
         <a href="${buyLink}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
       ` : ''}
@@ -169,7 +167,6 @@ const Views = {
     if (sheet) sheet.classList.add('show');
     if (window.TGBridge) TGBridge.syncBackButton(true);
 
-    // اتصال اکشن‌ها به داک بومی تلگرام (MainButton و SecondaryButton)
     if (window.TGBridge && typeof TGBridge.showDockActions === 'function') {
       const mainText = buyLink ? 'خرید مستقیم در صرافی ↗' : (contractAddr ? 'کپی آدرس کانترکت (CA)' : null);
       const onMainClick = buyLink 
@@ -268,7 +265,7 @@ const Views = {
     }
   },
 
-  // ================= تب آکادمی =================
+  // ================= تب آکادمی (گرید دو ستونه + Reader Mode) =================
   setAcademySubTab(subTab) {
     this.haptic('selection');
     App.state.academyTab = subTab;
@@ -284,7 +281,9 @@ const Views = {
     if (!listEl) return;
 
     const session = App.state.session;
-    const isAdmin = Boolean(session && (session.role === 'admin' || session.is_admin === true || session.is_super_admin === true));
+    const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    // تایید قطعی وضعیت ادمین همگام با منطق سراسری برنامه
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
 
     if (App.state.academyTab === 'strategies') {
       if (!App.state.strategies || !App.state.strategies.length) {
@@ -311,7 +310,7 @@ const Views = {
       let adminActionHeader = '';
       if (isAdmin) {
         adminActionHeader = `
-          <div style="margin-bottom:14px;">
+          <div style="margin-bottom:12px;">
             <button class="btn btn-secondary" style="border-style:dashed; border-color:var(--accent); color:var(--accent-light);" onclick="Modals.openAddArticleModal()">
               ➕ نگارش و انتشار مقاله جدید
             </button>
@@ -333,30 +332,94 @@ const Views = {
         return;
       }
 
-      const articlesHtml = App.state.articles.map(art => {
-        const headerImg = art.image || art.header_image || null;
-        return `
-          <div class="article-card">
-            ${headerImg ? `
-              <div class="article-cover">
-                <img src="${headerImg}" alt="${art.title || ''}" loading="lazy">
-              </div>` : ''
-            }
-            <div class="article-content">
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
-                <h4 class="article-title">${art.title || 'مقاله آموزشی'}</h4>
-                ${isAdmin && art.id ? `
-                  <button class="btn-del-article" onclick="Modals.deleteArticleAction(${art.id})">حذف</button>
-                ` : ''}
-              </div>
-              <div class="article-body">${art.body || art.desc || ''}</div>
-              ${art.created_at ? `<span class="article-date mono">${art.created_at}</span>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
+      // مرتب‌سازی مقالات از جدید به قدیم بر اساس شناسه یا فیلد تاریخ
+      const sortedArticles = [...App.state.articles].sort((a, b) => {
+        const timeA = a.id ? Number(a.id) : (a.created_at ? new Date(a.created_at).getTime() : 0);
+        const timeB = b.id ? Number(b.id) : (b.created_at ? new Date(b.created_at).getTime() : 0);
+        return timeB - timeA;
+      });
 
-      listEl.innerHTML = adminActionHeader + articlesHtml;
+      // رندر چیدمان شبکه‌ای دو ستونه
+      const gridHtml = `
+        <div class="articles-grid">
+          ${sortedArticles.map(art => {
+            const headerImg = art.image || art.header_image || null;
+            const snippet = art.desc || (art.body ? art.body.slice(0, 90) : '') || '';
+            const dateStr = art.created_at ? String(art.created_at).split(' ')[0] : 'اخیر';
+
+            return `
+              <div class="article-grid-card" onclick="Views.openArticleReader(${art.id})">
+                <div class="article-grid-cover">
+                  ${headerImg ? `
+                    <img src="${headerImg}" alt="${art.title || ''}" loading="lazy">
+                  ` : `
+                    <div class="cover-placeholder">📰</div>
+                  `}
+                </div>
+                <div class="article-grid-body">
+                  <h4 class="article-grid-title">${art.title || 'مقاله آموزشی'}</h4>
+                  <p class="article-grid-snippet">${snippet}</p>
+                  <div class="article-grid-meta">
+                    <span class="mono">${dateStr}</span>
+                    <span class="article-read-badge">مطالعه ↗</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      listEl.innerHTML = adminActionHeader + gridHtml;
     }
+  },
+
+  // ================= حالت مطالعه کامل مقاله (Reader Mode در BottomSheet) =================
+  openArticleReader(articleId) {
+    this.haptic('light');
+    const art = (App.state.articles || []).find(item => Number(item.id) === Number(articleId));
+    if (!art) return;
+
+    const session = App.state.session;
+    const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
+    const body = document.getElementById('sheetContent');
+    if (!body) return;
+
+    const headerImg = art.image || art.header_image || null;
+    const fullText = art.body || art.desc || '';
+    const dateStr = art.created_at || '—';
+
+    body.innerHTML = `
+      <div class="article-reader-container">
+        ${headerImg ? `
+          <div class="article-reader-cover">
+            <img src="${headerImg}" alt="${art.title || ''}">
+          </div>
+        ` : ''}
+
+        <div class="article-reader-header">
+          <h2 class="article-reader-title">${art.title || 'مقاله آموزشی'}</h2>
+          <div class="article-reader-meta">
+            <span class="mono">📅 ${dateStr}</span>
+            <span class="article-read-badge">📚 MemeLand Academy</span>
+          </div>
+        </div>
+
+        <div class="article-reader-body">${fullText}</div>
+
+        ${isAdmin ? `
+          <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:10px;">
+            <button class="btn btn-secondary" style="color:var(--red); border-color:rgba(244,63,94,0.2);" onclick="Modals.deleteArticleAction(${art.id})">
+              🗑️ حذف این مقاله
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    const sheet = document.getElementById('bottomSheet');
+    if (sheet) sheet.classList.add('show');
+    if (window.TGBridge) TGBridge.syncBackButton(true);
   }
 };

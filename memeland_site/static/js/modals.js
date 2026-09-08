@@ -1,14 +1,17 @@
 /**
- * MemeLand Modals & Actions Controller (v7.0.0 - Stealth Design & Full Staff Management)
+ * MemeLand Modals & Actions Controller (v7.2.0 - Resilient Multi-Header Auth & Full Staff Control)
  */
 
 const Modals = {
   currentStaffFilter: 'all',
 
-  // Helper to extract a fully valid authentication token and build safe headers
+  // استخراج قطعی توکن و تنظیم هدرهای احراز هویت با فال‌بک مستقیم شناسه تلگرام
   getAuthContext() {
     const sess = (window.App && App.state && App.state.session) || {};
-    let token = sess.token || localStorage.getItem('ml_token') || sessionStorage.getItem('ml_token') || '';
+    let token = sess.token || 
+                localStorage.getItem('mh_session_token') || 
+                localStorage.getItem('ml_token') || 
+                sessionStorage.getItem('ml_token') || '';
     
     if (!token) {
       try {
@@ -18,7 +21,8 @@ const Modals = {
     }
 
     const initData = window.Telegram?.WebApp?.initData || '';
-    const telegramId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || sess.user_id || '';
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const telegramId = sess.telegram_id || tgUser?.id || sess.user_id || '';
 
     const headers = {
       'Content-Type': 'application/json'
@@ -258,6 +262,9 @@ const Modals = {
 
       if (resp.ok) {
         this.haptic('success');
+        if (window.Views && typeof Views.closeBottomSheet === 'function') {
+          Views.closeBottomSheet();
+        }
         App.state.articles = [];
         await Views.renderAcademy();
       } else {
@@ -329,14 +336,13 @@ const Modals = {
     }
   },
 
-  // ================= مدال مدیریت کادر و اعضای تیم (طراحی جدید و پیشرفته) =================
+  // ================= مدال مدیریت کادر و اعضای تیم =================
   async openManageStaffModal() {
     this.haptic('selection');
     this.currentStaffFilter = 'all';
 
     document.getElementById('modalTitle').textContent = 'مدیریت کادر و نقش‌های فعال';
     document.getElementById('modalBody').innerHTML = `
-      <!-- بخش افزودن یا ویرایش عضو جدید -->
       <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px; margin-bottom:14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <span style="font-size:12.5px; font-weight:700; color:var(--text);">➕ اعطا یا تغییر نقش کاربر</span>
@@ -359,7 +365,6 @@ const Modals = {
         <button class="btn btn-primary" onclick="Modals.submitAddStaff()">اعمال و ذخیره نقش</button>
       </div>
 
-      <!-- فیلترهای دسته‌بندی کادر -->
       <div class="filter-scroll" style="margin-bottom:10px;">
         <button class="chip active" id="staffFilter-all" onclick="Modals.filterStaff('all')">همه اعضا</button>
         <button class="chip" id="staffFilter-admin" onclick="Modals.filterStaff('admin')">مدیران</button>
@@ -367,7 +372,6 @@ const Modals = {
         <button class="chip" id="staffFilter-traders" onclick="Modals.filterStaff('traders')">تریدرهای ویژه</button>
       </div>
 
-      <!-- کانتینر لیست کادر -->
       <div>
         <div id="staffListContainer" style="display:flex; flex-direction:column; gap:8px;">
           <div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">در حال بارگذاری لیست اعضا...</div>
