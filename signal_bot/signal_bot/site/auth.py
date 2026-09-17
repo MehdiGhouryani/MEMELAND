@@ -424,8 +424,17 @@ def _upsert_profile(telegram_id: int, display_name: Optional[str] = None, role: 
 
 
 def set_display_name(telegram_id: int, display_name: str) -> Optional[str]:
-    prof = get_profile(telegram_id)
-    return prof.get("display_name")
+    """⚠️ فیکس: قبلاً این تابع پارامتر display_name رو اصلاً استفاده نمی‌کرد و
+    فقط نام فعلی رو بدون تغییر برمی‌گردوند — یعنی «تغییر نام نمایشی» عملاً
+    هیچ‌وقت ذخیره نمی‌شد. الان واقعاً با همون الگوی _upsert_profile ثبت
+    می‌شه. فعلاً تو کد صدا زده نمی‌شه؛ اگه فیچر «ویرایش نام» بعداً به یه
+    endpoint وصل بشه، این تابع از الان درست کار می‌کنه."""
+    name = (display_name or "").strip()
+    if not name:
+        return get_profile(telegram_id).get("display_name")
+    name = name[:64]
+    _upsert_profile(telegram_id, display_name=name)
+    return name
 
 
 def verify_pin(*args, **kwargs) -> bool:

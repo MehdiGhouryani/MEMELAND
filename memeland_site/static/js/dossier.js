@@ -57,6 +57,10 @@ const Dossier = {
         : '👑';
 
       const winRateColor = data.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
+      const displayName = escapeHtml(data.display_name || 'کاربر');
+      const usernameOrId = escapeHtml(data.username ? '@' + data.username : 'ID: ' + data.telegram_id);
+      const displayRole = escapeHtml(data.display_role || 'معامله‌گر');
+      const bestCall = escapeHtml(data.best_call || '—');
 
       body.innerHTML = `
         <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
@@ -65,10 +69,10 @@ const Dossier = {
             <span class="role-badge-mini" style="position:absolute; bottom:-2px; right:-2px; font-size:12px;">${miniBadge}</span>
           </div>
           <div>
-            <h3 style="font-size:16px; font-weight:700; margin-bottom:3px; color:var(--text);">${data.display_name || 'کاربر'}</h3>
-            <span class="mono" style="font-size:11.5px; color:var(--text-muted);">${data.username ? '@' + data.username : 'ID: ' + data.telegram_id}</span>
+            <h3 style="font-size:16px; font-weight:700; margin-bottom:3px; color:var(--text);">${displayName}</h3>
+            <span class="mono" style="font-size:11.5px; color:var(--text-muted);">${usernameOrId}</span>
             <div style="margin-top:6px;">
-              <span class="chip" style="padding:2px 9px; font-size:10px; border-color:rgba(255,255,255,0.08); background:rgba(255,255,255,0.04); color:var(--accent-light);">${data.display_role || 'معامله‌گر'}</span>
+              <span class="chip" style="padding:2px 9px; font-size:10px; border-color:rgba(255,255,255,0.08); background:rgba(255,255,255,0.04); color:var(--accent-light);">${displayRole}</span>
             </div>
           </div>
         </div>
@@ -90,7 +94,7 @@ const Dossier = {
           </div>
           <div class="card-atomic" style="padding:12px; text-align:center; margin:0; cursor:default;">
             <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:4px;">بهترین کال</div>
-            <div class="mono" style="font-size:12.5px; font-weight:700; color:var(--green); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${data.best_call || '—'}</div>
+            <div class="mono" style="font-size:12.5px; font-weight:700; color:var(--green); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bestCall}</div>
           </div>
         </div>
 
@@ -101,10 +105,12 @@ const Dossier = {
             ? '<div style="font-size:11px; color:var(--text-muted); text-align:center; padding:16px; background:var(--bg); border-radius:var(--radius-sm);">سیگنالی در تاریخچه موجود نیست.</div>'
             : data.recent_signals.map(s => {
                 const roiClass = s.outcome_status === 'win' ? 'roi-win' : (s.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
-                const roiText = s.result || (s.outcome_status === 'open' ? 'در حال معامله' : '—');
+                const roiText = escapeHtml(s.result || (s.outcome_status === 'open' ? 'در حال معامله' : '—'));
+                const coin = escapeHtml(s.coin || '—');
+                const channel = escapeHtml(s.channel ? s.channel.toUpperCase() : 'DEX');
                 return `
                   <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); border:1px solid var(--border); padding:9px 12px; border-radius:var(--radius-sm); font-size:11.5px;">
-                    <span style="font-weight:600; color:var(--text);">${s.coin || '—'} <span class="mono" style="color:var(--text-dim); font-size:9.5px; margin-right:4px;">(${s.channel ? s.channel.toUpperCase() : 'DEX'})</span></span>
+                    <span style="font-weight:600; color:var(--text);">${coin} <span class="mono" style="color:var(--text-dim); font-size:9.5px; margin-right:4px;">(${channel})</span></span>
                     <span class="roi-badge ${roiClass}" style="padding:2px 7px; font-size:10px;">${roiText}</span>
                   </div>
                 `;

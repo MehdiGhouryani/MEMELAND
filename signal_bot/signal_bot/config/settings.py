@@ -97,6 +97,15 @@ CHANNELS = [
 CHANNEL_LABELS = dict(CHANNELS)
 DEFAULT_CHANNEL = "alt"
 
+# ⚠️ فیچر جدید (خواسته‌ی شریک): سطح ریسک هر سیگنال. پیش‌فرض کم‌ریسکه چون طبق
+# گفته‌ی خودش، الان اکثر سیگنال‌هاش کم‌ریسک هستن؛ پرریسک یه گزینه‌ی اضافه‌ست.
+RISK_LEVELS = [
+    ("low", "🟢 کم‌ریسک"),
+    ("high", "🔴 پرریسک"),
+]
+RISK_LEVEL_LABELS = dict(RISK_LEVELS)
+DEFAULT_RISK_LEVEL = "low"
+
 ROLE_DAILY_LIMITS = {
     "rookie": 3,
     "explorer": 5,

@@ -17,7 +17,7 @@ def daily_signal_count(user_id):
 
 
 def insert_signal(user_id, coin, signal_type="full", direction=None, entry=None, sl=None, tp=None,
-                   description="", photo_file_id="", channel="alt"):
+                   description="", photo_file_id="", channel="alt", risk_level="low"):
     """
     ثبت سیگنال جدید. فقط user_id و coin لازمن — بقیه اختیاری هستن چون Full
     Signal (عکس) و Fast Call (بدون Entry/TP) نیازی به مقادیر عددی کامل ندارن
@@ -27,10 +27,10 @@ def insert_signal(user_id, coin, signal_type="full", direction=None, entry=None,
     c = conn.cursor()
     c.execute("""INSERT INTO signals
         (user_id,coin,direction,entry,stop_loss,take_profit,
-         description,signal_type,photo_file_id,channel,status,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?)""",
+         description,signal_type,photo_file_id,channel,risk_level,status,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?)""",
         (user_id, coin, direction, entry, sl, tp,
-         description, signal_type, photo_file_id, channel,
+         description, signal_type, photo_file_id, channel, risk_level,
          datetime.now().isoformat()))
     signal_id = c.lastrowid
     conn.commit()
@@ -74,14 +74,15 @@ def get_pending_signals(limit=10):
 
 
 def get_signal_owner(signal_id):
-    """برمی‌گردونه (user_id, coin, direction, photo_file_id, signal_type, description, channel) یا None.
+    """برمی‌گردونه (user_id, coin, direction, photo_file_id, signal_type, description, channel, risk_level) یا None.
     ⚠️ channel هم مثل description تازه اضافه شد، به همون دلیل: approve_ باید
     مقدار واقعی کانال رو به push_signal_created بده، نه پیش‌فرض هاردکد.
-    صدا زننده‌ها: approve_ (بر اساس موقعیت unpack می‌کنه، آپدیت شد) و reject_
-    (فقط row[0] رو می‌خونه، بی‌اثر از این تغییر)."""
+    risk_level هم به همون الگو اضافه شد (فیچر سطح ریسک).
+    صدا زننده‌ها: approve_ و cmd_resync_signal (بر اساس موقعیت unpack می‌کنن،
+    آپدیت شدن) و reject_ (فقط row[0] رو می‌خونه، بی‌اثر از این تغییر)."""
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT user_id, coin, direction, photo_file_id, signal_type, description, channel FROM signals WHERE id=?", (signal_id,))
+    c.execute("SELECT user_id, coin, direction, photo_file_id, signal_type, description, channel, risk_level FROM signals WHERE id=?", (signal_id,))
     row = c.fetchone()
     conn.close()
     return row
@@ -323,3 +324,14 @@ def export_rows():
     rows = c.fetchall()
     conn.close()
     return rows
+
+
+def get_approved_signal_ids():
+    """برای ابزار تشخیصی sync_report — همه‌ی id هایی که تو بات approved شدن،
+    تا با site.db مقایسه بشن و ببینیم کدوم‌ها سینک نشدن."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id FROM signals WHERE status='approved'")
+    ids = [r[0] for r in c.fetchall()]
+    conn.close()
+    return ids

@@ -47,25 +47,34 @@ def create_signal(
     owner_telegram_id=None, caller_name=None, channel="alt", coin="", direction=None,
     tier="free", note="", hashtag=None, before_img=None, buy_link=None,
     contract_address=None, dex_type=None, source="manual", bot_signal_id=None,
-    created_at=None, chain=None, entry_price=None,
+    created_at=None, chain=None, entry_price=None, hold_period=None, thesis=None,
+    risk_level="low",
 ):
     """ثبت سیگنال جدید. created_at اگه داده نشه، همین لحظه‌ست — ولی برخلاف
     قبل، بولک-ایمپورت می‌تونه صریح تاریخ تاریخی بده (باگ قبلی همین بود که
     این امکان اصلاً وجود نداشت).
     chain/entry_price: برای آلارم رسیدن به ورود (services/price_feed) — هردو
     اختیاری، بدونشون سیگنال فقط تو polling قیمت نادیده گرفته می‌شه، چیزی
-    کرش نمی‌کنه."""
+    کرش نمی‌کنه.
+    ⚠️ فیکس: hold_period/thesis قبلاً این‌جا اصلاً پذیرفته نمی‌شدن با این‌که
+    هم تو اسکیمای دیتابیس (site/db.py) و هم تو allowed_fields (routes.py)
+    هستن — یعنی اگه یه‌روز فرانت‌اند این دو فیلد رو موقع ساخت سیگنال
+    می‌فرستاد، create_signal(**payload) با TypeError رد می‌شد (۴۰۰ به
+    کلاینت). الان کامل پشتیبانی می‌شن، هرچند فعلاً هیچ فرمی این دو رو
+    موقع ساخت پر نمی‌کنه (می‌شه بعداً هم از طریق آپدیت ست بشن).
+    risk_level: فیچر جدید (خواسته‌ی شریک) — 'low' یا 'high'، پیش‌فرض کم‌ریسک."""
     conn = get_db()
     c = conn.cursor()
     c.execute(
         """INSERT INTO signals
            (source, bot_signal_id, owner_telegram_id, caller_name, channel, coin, direction,
             tier, entry_open, review_status, outcome_status, note, hashtag,
-            before_img, buy_link, contract_address, dex_type, chain, entry_price, created_at)
-           VALUES (?,?,?,?,?,?,?,?,1,'approved','open',?,?,?,?,?,?,?,?,?)""",
+            before_img, buy_link, contract_address, dex_type, chain, entry_price,
+            hold_period, thesis, risk_level, created_at)
+           VALUES (?,?,?,?,?,?,?,?,1,'approved','open',?,?,?,?,?,?,?,?,?,?,?,?)""",
         (source, bot_signal_id, owner_telegram_id, caller_name, channel, coin, direction,
          tier, note, hashtag, before_img, buy_link, contract_address, dex_type, chain, entry_price,
-         created_at or datetime.utcnow().isoformat()),
+         hold_period, thesis, risk_level, created_at or datetime.utcnow().isoformat()),
     )
     signal_id = c.lastrowid
     conn.commit()
@@ -226,7 +235,7 @@ def get_feed(limit: int = 200, offset: int = 0, status: str = None, channel: str
         f"""SELECT id, source, bot_signal_id, owner_telegram_id, caller_name, channel, coin,
                   direction, tier, entry_open, review_status, outcome_status, result, note,
                   hashtag, hold_period, thesis, rating, before_img, after_img, buy_link,
-                  contract_address, dex_type, chain, entry_price, created_at
+                  contract_address, dex_type, chain, entry_price, risk_level, created_at
            FROM signals {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?""",
         params + [limit, offset],
     )

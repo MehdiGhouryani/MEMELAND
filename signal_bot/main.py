@@ -127,6 +127,8 @@ def main():
     app.add_handler(CommandHandler("fastcall", signals.cmd_fastcall))
     app.add_handler(CommandHandler("fullsignal", signals.cmd_fullsignal))
     app.add_handler(CommandHandler("markpaid", admin.cmd_markpaid))
+    app.add_handler(CommandHandler("resync_signal", admin.cmd_resync_signal))
+    app.add_handler(CommandHandler("sync_report", admin.cmd_sync_report))
     app.add_handler(CommandHandler(["logs", "syslog"], handle_logs_command))
 
     # ── هندلرهای کال‌بک (Callbacks) ──────────────────────

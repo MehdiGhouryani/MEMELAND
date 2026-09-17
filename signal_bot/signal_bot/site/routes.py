@@ -108,8 +108,11 @@ def _require_admin(request: web.Request, body_data: dict = None):
     return None
 
 
-def _require_owner_or_admin(request: web.Request, signal_id: int):
-    session = _resolve_user_session(request)
+def _require_owner_or_admin(request: web.Request, signal_id: int, body_data: dict = None):
+    # ⚠️ فیکس: قبلاً body_data رو مثل _require_admin پاس نمی‌داد؛ یعنی اگه
+    # کلاینتی init_data رو فقط تو بدنه‌ی JSON بفرسته (نه هدر Authorization/
+    # X-Telegram-Init-Data)، این تابع همیشه رد می‌کرد حتی برای صاحب واقعی سیگنال.
+    session = _resolve_user_session(request, body_data)
     if not session:
         return None
     if session.get("is_admin") or session.get("is_super_admin"):
@@ -273,11 +276,12 @@ async def handle_staff_delete(request: web.Request) -> web.Response:
 # ================= مسیرهای فید سیگنال‌ها =================
 
 async def handle_signals_get(request: web.Request) -> web.Response:
-    viewer = _resolve_user_session(request) or {
-        "telegram_id": 2088114041,
-        "is_admin": True,
-        "role": "admin"
-    }
+    # ⚠️ فیکس امنیتی: قبلاً وقتی session معتبر نبود، به یه ادمین ساختگی
+    # fallback می‌کرد (احتمالاً یه shortcut دیباگ که به‌اشتباه commit شده بود)
+    # و کل پی‌وال VIP رو برای هر بازدیدکننده‌ی ناشناس دور می‌زد. viewer=None
+    # دقیقاً همون چیزیه که signals.get_feed()/​_viewer_has_vip_access از قبل
+    # برای مهمانِ بدون دسترسی طراحی شده بودن که باهاش کار کنن.
+    viewer = _resolve_user_session(request)
 
     try:
         limit = min(int(request.query.get("limit", 200)), 200)
@@ -372,16 +376,20 @@ async def handle_trader_dossier(request: web.Request) -> web.Response:
 
 async def handle_signals_result(request: web.Request) -> web.Response:
     signal_id = int(request.match_info["id"])
-    if not _require_owner_or_admin(request, signal_id):
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_error(400, "invalid json")
+
+    if not _require_owner_or_admin(request, signal_id, body):
         return _json_error(403, "فقط صاحب سیگنال یا ادمین")
 
     try:
-        body = await request.json()
         result_text = body.get("result", "")
         status = body.get("outcome_status", "open")
         ok = signals.set_result(signal_id, result_text, status)
         logger.info(f"SigResult: sid={signal_id} res={result_text} stat={status}")
-    except (json.JSONDecodeError, ValueError) as e:
+    except (ValueError, AttributeError) as e:
         return _json_error(400, str(e))
 
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")

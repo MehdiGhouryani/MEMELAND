@@ -1,7 +1,7 @@
 """همه‌ی کیبوردهای inline ربات، یک‌جا."""
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from signal_bot.config.settings import RESULT_LABEL, POINT_TABLE, ROLES, SITE_URL, CHANNELS
+from signal_bot.config.settings import RESULT_LABEL, POINT_TABLE, ROLES, SITE_URL, CHANNELS, RISK_LEVELS
 
 
 def btn(text, cb, style=None):
@@ -88,6 +88,14 @@ def channel_picker_kb():
     """قدم تازه‌ی انتخاب کانال — بین انتخاب نوع سیگنال (sigtype_full/fast) و
     پرسیدن محتوا/کوین قرار می‌گیره. callback_dataها با ch_ شروع می‌شن."""
     rows = [[btn(label, f"ch_{key}", "primary")] for key, label in CHANNELS]
+    rows.append([btn("🔙  لغو", "cancel", "primary")])
+    return InlineKeyboardMarkup(rows)
+
+
+def risk_picker_kb():
+    """قدم تازه‌ی انتخاب سطح ریسک — دقیقاً بعد از انتخاب کانال، قبل از محتوا/کوین.
+    callback_dataها با risk_ شروع می‌شن (هم‌الگو با channel_picker_kb)."""
+    rows = [[btn(label, f"risk_{key}", "primary")] for key, label in RISK_LEVELS]
     rows.append([btn("🔙  لغو", "cancel", "primary")])
     return InlineKeyboardMarkup(rows)
 

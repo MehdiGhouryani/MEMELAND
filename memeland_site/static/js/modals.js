@@ -287,7 +287,7 @@ const Modals = {
     document.getElementById('modalBody').innerHTML = `
       <div class="field">
         <label>درصد سود یا نتیجه نهایی:</label>
-        <input id="updResult" class="mono" value="${s.result || ''}" placeholder="مثلاً +240% یا تارگت نهایی">
+        <input id="updResult" class="mono" value="${escapeHtml(s.result || '')}" placeholder="مثلاً +240% یا تارگت نهایی">
       </div>
       <div class="field">
         <label>وضعیت بسته شدن پوزیشن:</label>
@@ -438,11 +438,12 @@ const Modals = {
     };
 
     cont.innerHTML = list.map(item => {
-      const roleText = item.is_super ? '👑 Super Admin' : (roleBadgeMap[item.role] || item.role);
+      const roleText = escapeHtml(item.is_super ? '👑 Super Admin' : (roleBadgeMap[item.role] || item.role));
       const isSuper = Boolean(item.is_super);
-      const displayName = item.first_name || `کاربر ${item.user_id}`;
-      const username = item.username || `ID: ${item.user_id}`;
+      const displayName = escapeHtml(item.first_name || `کاربر ${item.user_id}`);
+      const username = escapeHtml(item.username || `ID: ${item.user_id}`);
       const roleKey = item.role || 'rookie';
+      const userId = escapeHtml(String(item.user_id));
 
       return `
         <div class="card-atomic" style="margin:0; padding:10px 12px; cursor:default;">
@@ -458,7 +459,7 @@ const Modals = {
                 <div style="font-size:10.5px; color:var(--text-muted); display:flex; align-items:center; gap:6px; margin-top:2px;">
                   <span class="mono">${username}</span>
                   <span style="opacity:0.4;">•</span>
-                  <span class="mono" style="cursor:pointer; text-decoration:underline;" onclick="event.stopPropagation(); Views.copyContract('${item.user_id}')">${item.user_id}</span>
+                  <span class="mono" style="cursor:pointer; text-decoration:underline;" onclick="event.stopPropagation(); Views.copyContract('${userId}')">${userId}</span>
                 </div>
               </div>
             </div>

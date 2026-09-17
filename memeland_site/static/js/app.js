@@ -86,7 +86,7 @@ const App = {
       }
 
       const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-      const isAdm = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
+      const isAdm = Boolean(session?.is_admin || session?.is_super_admin);
       window.sendRemoteLog(`APP: Ready (sessUid=${session?.telegram_id || 'none'}, tgUid=${tgUid || 'none'}, adm=${isAdm}, sigCount=${this.state.signals.length})`);
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
@@ -154,7 +154,7 @@ const App = {
     const quota = s?.quota || null;
     const photoUrl = s?.photo_url || s?.user?.photo_url || tgUser?.photo_url || null;
 
-    const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true || Number(tid) === 2088114041);
+    const isSuper = Boolean(s?.is_super_admin === true || quota?.is_super_admin === true);
     const isAdmin = Boolean(isSuper || s?.is_admin === true || quota?.is_admin === true || s?.role === 'admin');
 
     let roleKey = 'rookie';
@@ -170,7 +170,7 @@ const App = {
 
     if (avatarContainer) {
       if (photoUrl) {
-        avatarContainer.innerHTML = `<img src="${photoUrl}" alt="${displayName}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.outerHTML=window.AvatarRenderer ? AvatarRenderer.getAvatarSvg('${roleKey}') : ''">`;
+        avatarContainer.innerHTML = `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(displayName)}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.outerHTML=window.AvatarRenderer ? AvatarRenderer.getAvatarSvg('${roleKey}') : ''">`;
       } else if (window.AvatarRenderer) {
         avatarContainer.innerHTML = AvatarRenderer.getAvatarSvg(roleKey);
       }

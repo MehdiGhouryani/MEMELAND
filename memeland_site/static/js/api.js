@@ -2,6 +2,30 @@
  * MemeLand API Service & Session Manager (v7.6.0 - Robust Token Sanitization & Direct Array Parser)
  */
 
+// ⚠️ فیکس امنیتی (XSS ذخیره‌شده): تمام دیتای آزادِ کاربر (توضیحات سیگنال، اسم
+// کالر، عنوان مقاله، لینک خرید و ...) قبلاً مستقیم با innerHTML و بدون escape
+// رندر می‌شد. سمت بات این escape از قبل با تابع esc() انجام می‌شد ولی سمت
+// سایت هیچ‌وقت اعمال نشده بود. این دو تابع سراسری همون کار رو این‌جا انجام
+// می‌دن و باید دور *هر* متن/لینک آزاد کاربر که وارد innerHTML می‌شه بذاریمشون.
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// برای href/src که کاربر آزاد پرشون می‌کنه (لینک خرید و ...)؛ فقط http/https
+// رو رد می‌کنه و جلوی javascript:/data: URI رو می‌گیره.
+function safeUrl(url) {
+  if (!url) return '';
+  const trimmed = String(url).trim();
+  if (/^https?:\/\//i.test(trimmed)) return escapeHtml(trimmed);
+  return '';
+}
+
 const API = {
   baseUrl: '/site',
 

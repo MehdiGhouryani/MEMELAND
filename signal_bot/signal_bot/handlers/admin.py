@@ -14,6 +14,7 @@ from signal_bot.config.settings import (
 )
 from signal_bot.db import users_repo, signals_repo, prize_repo, staff_repo, rewards_repo, caller_donations_repo
 from signal_bot.services import scoring, access, results, site_sync, image_upload
+from signal_bot.site import signals as site_signals
 from signal_bot.services.notify import safe_send_message, safe_send_photo, safe_send_document
 from signal_bot.keyboards.keyboards import (
     admin_kb, back_main_kb, approve_reject_kb, signal_result_kb, user_manage_kb, role_picker_kb, btn
@@ -118,31 +119,48 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         sid = int(data.split("_")[1])
         row = signals_repo.get_signal_owner(sid)
+        if not row:
+            # ⚠️ فیکس: قبلاً اگه سیگنال پیدا نمی‌شد (مثلاً کلیک دوبار روی
+            # تأیید)، بازم پیام «✅ تأیید شد» نشون داده می‌شد بدون این‌که
+            # هیچ سینکی به سایت انجام بشه. حالا واقعاً به ادمین می‌گیم.
+            await q.edit_message_text(f"⚠️  سیگنال #{sid} پیدا نشد (شاید قبلاً پردازش شده).")
+            return
+
         signals_repo.set_signal_status(sid, "approved", reviewed_by=user.id)
         logger.info(f"SigApprove: sid={sid} by={user.id}")
-        await q.edit_message_text(f"✅  سیگنال #{sid} تأیید شد.")
-        if row:
-            uid, coin, direction, photo_file_id, signal_type, description, channel = row
-            photo_url = None
-            if photo_file_id:
-                photo_url = await image_upload.upload_telegram_photo(context.bot, photo_file_id, sid)
-            await site_sync.push_signal_created(
-                bot_signal_id=sid, owner_telegram_id=uid, coin=coin, direction=direction,
-                signal_type=signal_type, note=description or "", photo_url=photo_url, channel=channel,
-                caller_name=users_repo.get_full_name(uid)
+
+        uid, coin, direction, photo_file_id, signal_type, description, channel, risk_level = row
+        photo_url = None
+        if photo_file_id:
+            photo_url = await image_upload.upload_telegram_photo(context.bot, photo_file_id, sid)
+        # ⚠️ فیکس: قبلاً پیام «تأیید شد» همین‌جا، قبل از تلاش برای سینک به سایت
+        # نشون داده می‌شد — یعنی حتی اگه خط زیر شکست می‌خورد، ادمین فکر می‌کرد
+        # همه‌چی اوکیه. حالا اول سینک رو امتحان می‌کنیم و بر اساس نتیجه‌ی واقعیش
+        # پیام مناسب رو نشون می‌دیم.
+        synced = await site_sync.push_signal_created(
+            bot_signal_id=sid, owner_telegram_id=uid, coin=coin, direction=direction,
+            signal_type=signal_type, note=description or "", photo_url=photo_url, channel=channel,
+            caller_name=users_repo.get_full_name(uid), risk_level=risk_level or "low"
+        )
+        if synced:
+            await q.edit_message_text(f"✅  سیگنال #{sid} تأیید شد.")
+        else:
+            await q.edit_message_text(
+                f"✅  سیگنال #{sid} تو ربات تأیید شد، ولی نمایشش تو وب‌سایت با خطا مواجه شد.\n"
+                f"لطفاً بعداً از دستور /resync_signal {sid} برای تلاش دوباره استفاده کن."
             )
-            dir_part = ""
-            if direction:
-                emoji = "🟢" if direction == "LONG" else "🔴"
-                dir_part = f"  {emoji} {direction}"
-            await safe_send_message(context.bot, chat_id=uid,
-                text=(
-                    f"🎉  <b>سیگنال #{sid} تأیید شد!</b>\n{SEP}\n\n"
-                    f"<b>{esc(coin)}</b>{dir_part}\n\n"
-                    f"سیگنالت توی فید عمومی و لیدربورد قرار گرفت ✅"
-                ),
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[btn("📊  آمار من","menu_stats","primary")]]))
+        dir_part = ""
+        if direction:
+            emoji = "🟢" if direction == "LONG" else "🔴"
+            dir_part = f"  {emoji} {direction}"
+        await safe_send_message(context.bot, chat_id=uid,
+            text=(
+                f"🎉  <b>سیگنال #{sid} تأیید شد!</b>\n{SEP}\n\n"
+                f"<b>{esc(coin)}</b>{dir_part}\n\n"
+                f"سیگنالت توی فید عمومی و لیدربورد قرار گرفت ✅"
+            ),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[btn("📊  آمار من","menu_stats","primary")]]))
 
     elif data.startswith("reject_"):
         if not can_review:
@@ -654,4 +672,76 @@ async def cmd_markpaid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for rid, amount, reason, granted_at in rows:
         lines.append(f"#{rid}  💰{amount}  —  {esc(reason) or '—'}  ({granted_at[:16]})\n")
     lines.append(f"\nبرای paid‌کردن: <code>/markpaid {target_id} REWARD_ID</code>")
+    await update.message.reply_html("".join(lines))
+
+
+async def cmd_resync_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دستور تشخیصی/ترمیمی: یه سیگنال مشخص که تو بات approved شده ولی به هر
+    دلیلی (خطای گذرا، لاک دیتابیس و ...) به سایت سینک نشده رو دوباره امتحان
+    می‌کنه. جواب مستقیم به همین مشکل «سیگنال تو وب‌اپ نمیاد» که قبلاً فقط تو
+    لاگ سرور قابل دیدن بود، نه از داخل خود تلگرام.
+    استفاده: /resync_signal SIGNAL_ID
+    """
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        return
+    raw = (update.message.text or "").split()
+    if len(raw) < 2 or not raw[1].isdigit():
+        await update.message.reply_text("استفاده:\n<code>/resync_signal SIGNAL_ID</code>", parse_mode=ParseMode.HTML)
+        return
+    sid = int(raw[1])
+
+    existing_site_id = site_signals.get_id_by_bot_signal_id(sid)
+    if existing_site_id:
+        await update.message.reply_text(f"ℹ️  سیگنال #{sid} از قبل تو سایت هست (site id={existing_site_id})؛ نیازی به resync نیست.")
+        return
+
+    row = signals_repo.get_signal_owner(sid)
+    if not row:
+        await update.message.reply_text(f"⚠️  سیگنال #{sid} تو دیتابیس ربات پیدا نشد.")
+        return
+
+    uid, coin, direction, photo_file_id, signal_type, description, channel, risk_level = row
+    photo_url = None
+    if photo_file_id:
+        photo_url = await image_upload.upload_telegram_photo(context.bot, photo_file_id, sid)
+
+    synced = await site_sync.push_signal_created(
+        bot_signal_id=sid, owner_telegram_id=uid, coin=coin, direction=direction,
+        signal_type=signal_type, note=description or "", photo_url=photo_url, channel=channel,
+        caller_name=users_repo.get_full_name(uid), risk_level=risk_level or "low"
+    )
+    if synced:
+        await update.message.reply_text(f"✅  سیگنال #{sid} الان با موفقیت با سایت سینک شد.")
+    else:
+        await update.message.reply_text(f"❌  تلاش دوباره هم شکست خورد. لاگ سرور رو برای جزئیات بیشتر چک کن.")
+
+
+async def cmd_sync_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ابزار تشخیصی: تعداد سیگنال‌های approved تو ربات رو با تعداد سینک‌شده‌ی
+    متناظرشون تو سایت مقایسه می‌کنه و اگه اختلافی هست، دقیقاً کدوم id هارو
+    (حداکثر ۲۰ تای اول) لیست می‌کنه — تا معلوم بشه مشکل «سیگنال نیومد» واقعاً
+    چقدر رخ می‌ده و برای کدوم سیگنال‌ها، به‌جای حدس زدن.
+    استفاده: /sync_report
+    """
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        return
+
+    approved_ids = signals_repo.get_approved_signal_ids()
+    missing = [sid for sid in approved_ids if site_signals.get_id_by_bot_signal_id(sid) is None]
+
+    total = len(approved_ids)
+    synced_count = total - len(missing)
+    lines = [
+        f"<b>گزارش سینک بات ↔ سایت</b>\n{SEP}\n",
+        f"کل سیگنال‌های approved تو ربات: {total}\n",
+        f"سینک‌شده به سایت: {synced_count}\n",
+        f"گم‌شده (approved ولی تو سایت نیست): {len(missing)}\n",
+    ]
+    if missing:
+        shown = missing[:20]
+        lines.append(f"\nشناسه‌های گم‌شده{' (۲۰ تای اول)' if len(missing) > 20 else ''}:\n")
+        lines.append(", ".join(f"#{sid}" for sid in shown))
+        lines.append(f"\n\nبرای ترمیم هرکدوم: <code>/resync_signal SIGNAL_ID</code>")
     await update.message.reply_html("".join(lines))

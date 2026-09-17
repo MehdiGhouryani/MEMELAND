@@ -144,6 +144,7 @@ def init_db():
         ("signals", "reviewed_by",     "INTEGER"),
         ("signals", "result_set_by",   "INTEGER"),
         ("signals", "channel",         "TEXT DEFAULT 'alt'"),
+        ("signals", "risk_level",      "TEXT DEFAULT 'low'"),
         ("prize_pool", "invoice_id",   "TEXT"),
         ("prize_pool", "invoice_url",  "TEXT"),
         ("prize_pool", "payment_id",   "TEXT"),

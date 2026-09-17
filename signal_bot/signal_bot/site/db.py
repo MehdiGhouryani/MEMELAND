@@ -95,7 +95,8 @@ def init_db():
     # آلارم قیمت ورود (chain لازمه چون contract_address به‌تنهایی چندمعنایی‌ه —
     # همون آدرس می‌تونه رو چند شبکه‌ی EVM مختلف، توکن‌های کاملاً نامرتبط باشه).
     # entry_alert_sent: 0/1، برای این‌که هر سیگنال فقط یه‌بار آلارم بده.
-    for col, typ in [("chain", "TEXT"), ("entry_price", "REAL"), ("entry_alert_sent", "INTEGER DEFAULT 0")]:
+    for col, typ in [("chain", "TEXT"), ("entry_price", "REAL"), ("entry_alert_sent", "INTEGER DEFAULT 0"),
+                      ("risk_level", "TEXT DEFAULT 'low'")]:
         try:
             c.execute(f"ALTER TABLE signals ADD COLUMN {col} {typ}")
         except sqlite3.OperationalError as e:

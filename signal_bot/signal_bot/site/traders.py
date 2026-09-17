@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from signal_bot.config import settings
 from signal_bot.site import auth
 from signal_bot.site.db import get_db
+from signal_bot.db import users_repo
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +23,17 @@ def get_trader_dossier(telegram_id: int) -> Optional[Dict[str, Any]]:
     try:
         c = conn.cursor()
 
-        # استخراج نام و یوزرنیم کاربر
+        # ⚠️ فیکس: قبلاً این‌جا دنبال جدول «users» تو site.db می‌گشت که اصلاً
+        # اونجا وجود نداره (جدول users فقط تو دیتابیس بات، signals.db، هست) —
+        # یعنی username/first_name همیشه خالی می‌موند و پرونده‌ی تریدر همیشه
+        # به‌جای @username واقعی، فقط "ID: ..." نشون می‌داد. الان مستقیم از
+        # دیتابیس بات (users_repo) خونده می‌شه.
         username = None
         first_name = None
-        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if c.fetchone():
-            c.execute("SELECT username, full_name FROM users WHERE user_id=?", (telegram_id,))
-            user_row = c.fetchone()
-            if user_row:
-                username, first_name = user_row
+        user_row = users_repo.find_by_id(telegram_id)
+        if user_row:
+            _, full_name, uname, _, _, _ = user_row
+            username, first_name = uname, full_name
 
         # آمار کل سیگنال‌ها
         c.execute(

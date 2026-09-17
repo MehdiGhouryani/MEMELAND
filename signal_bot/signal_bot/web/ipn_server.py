@@ -1,14 +1,21 @@
 """
-سرور وب داخلی بات (aiohttp) — سه مسیر: وب‌هوک IPN نوپیمنتس، تأیید initData
-تلگرام WebApp (services/webapp_auth.py)، و کل بک‌اند سایت (site/routes.py:
-سرو کردن HTML + auth + CRUD سیگنال/امتیاز/محتوا).
+سرور وب داخلی بات (aiohttp) — دو دسته مسیر: وب‌هوک IPN نوپیمنتس، و کل بک‌اند
+سایت (site/routes.py: سرو کردن HTML + auth (شامل webapp-auth) + CRUD
+سیگنال/امتیاز/محتوا).
 
 ⚠️ اسم فایل (ipn_server.py) میراث دورانیه که فقط IPN بود؛ عمداً rename نشده
 که diff بزرگ نشه — فقط توابعش عمومی‌تر شدن (create_web_app/start_web_server).
 
 فقط مسیر IPN شرطیه (اگه NOWPAYMENTS_IPN_SECRET خالی باشه، فقط IPN غیرفعاله).
-بک‌اند سایت/webapp-auth همیشه فعالن — به هیچ سرویس بیرونی نیاز ندارن، چون
-SQLite محلیه.
+بک‌اند سایت (شامل webapp-auth) همیشه فعاله — به هیچ سرویس بیرونی نیاز نداره،
+چون SQLite محلیه.
+
+⚠️ فیکس: قبلاً این فایل خودش هم یه هندلر جدا برای POST /webapp-auth ثبت
+می‌کرد (_handle_webapp_auth) که چون زودتر از site_routes.register(app) ثبت
+می‌شد، همیشه جواب می‌داد و هندلر کامل‌تر routes.py (که is_admin/quota/
+display_name هم برمی‌گردونه) رو برای همون مسیر خاص کاملاً مرده می‌کرد. حذف
+شد؛ routes.py از قبل همین مسیر رو (همراه با /site/auth و /site/webapp-auth)
+به همون handle_webapp_auth کامل وصل می‌کنه.
 """
 import json
 import logging
@@ -16,8 +23,6 @@ import logging
 from aiohttp import web
 
 from signal_bot.config import settings
-from signal_bot.services import webapp_auth
-from signal_bot.site import auth as site_auth
 from signal_bot.site import routes as site_routes
 from signal_bot.db import prize_repo, caller_donations_repo
 from signal_bot.services.ipn_signature import verify_signature
@@ -68,30 +73,10 @@ async def _handle_support_payment(bot, order_id, payment_id, new_status):
     return True
 
 
-async def _handle_webapp_auth(request: web.Request) -> web.Response:
-    """initData رو تأیید می‌کنه و مستقیماً یه session تو SQLite سایت می‌سازه."""
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return web.Response(status=400, text="invalid json")
-
-    init_data = body.get("init_data", "")
-    user = webapp_auth.verify_init_data(init_data, settings.TOKEN)
-    if not user:
-        logging.warning("webapp-auth: initData نامعتبر یا امضای غلط — رد شد")
-        return web.Response(status=401, text="invalid init_data")
-
-    token = site_auth.create_session(
-        user["id"], username=user.get("username"), first_name=user.get("first_name"),
-        photo_url=user.get("photo_url"),
-    )
-    return web.json_response({"token": token})
-
-
 def create_web_app(bot) -> web.Application:
-    """ساخت اپلیکیشن aiohttp با ۳ دسته مسیر: IPN، webapp-auth، و کل بک‌اند
-    سایت (site/routes.py — سرو کردن HTML + auth + CRUD سیگنال). site همیشه
-    ثبت می‌شه (دیگه به هیچ کلید Supabase نیاز نداره)؛ IPN فقط اگه سکرتش ست باشه."""
+    """ساخت اپلیکیشن aiohttp با ۲ دسته مسیر: IPN، و کل بک‌اند سایت
+    (site/routes.py — سرو کردن HTML + auth + CRUD سیگنال). site همیشه ثبت
+    می‌شه (دیگه به هیچ کلید Supabase نیاز نداره)؛ IPN فقط اگه سکرتش ست باشه."""
 
     async def handle_ipn(request: web.Request) -> web.Response:
         raw_body = await request.read()
@@ -139,10 +124,9 @@ def create_web_app(bot) -> web.Application:
     app = web.Application(client_max_size=10 * 1024 * 1024)
     if settings.NOWPAYMENTS_IPN_SECRET:
         app.router.add_post(settings.IPN_WEBHOOK_PATH, handle_ipn)
-    # بک‌اند سایت (HTML + auth + سیگنال‌ها) و webapp-auth همیشه ثبت می‌شن —
-    # از وقتی پیوت به SQLite انجام شد، دیگه به هیچ کلید Supabase نیازی ندارن،
+    # بک‌اند سایت (HTML + auth شامل webapp-auth + سیگنال‌ها) همیشه ثبت می‌شه —
+    # از وقتی پیوت به SQLite انجام شد، دیگه به هیچ کلید Supabase نیازی نداره،
     # فقط site.db.init_db() لازمه که قبلش صدا زده شده باشه (main.py).
-    app.router.add_post(settings.WEBAPP_AUTH_PATH, _handle_webapp_auth)
     site_routes.register(app)
     return app
 

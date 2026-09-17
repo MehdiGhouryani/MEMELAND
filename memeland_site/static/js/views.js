@@ -64,15 +64,21 @@ const Views = {
     listEl.innerHTML = list.map(s => {
       const statusKey = String(s.outcome_status || s.status || 'open').toLowerCase();
       const roiClass = statusKey === 'win' ? 'roi-win' : (statusKey === 'loss' ? 'roi-loss' : 'roi-open');
-      const roiText = s.result ? s.result : 'در حال معامله';
-      const caller = s.caller_name || 'تیم تحلیلی';
+      const roiText = escapeHtml(s.result ? s.result : 'در حال معامله');
+      const caller = escapeHtml(s.caller_name || 'تیم تحلیلی');
       const callerId = s.owner_telegram_id || null;
-      const coinTitle = s.coin || '—';
-      const channelTitle = (s.channel || 'DEX').toUpperCase();
+      const coinTitle = escapeHtml(s.coin || '—');
+      const channelTitle = escapeHtml((s.channel || 'DEX').toUpperCase());
       const contractAddr = s.contract_address || null;
+      const riskLevel = s.risk_level || 'low';
 
+      // ⚠️ فیکس XSS: قبلاً contractAddr مستقیم داخل onclick="...('${contractAddr}')"
+      // تزریق می‌شد — یعنی یه آپاستروف تو آدرس کافی بود که از رشته‌ی جاوااسکریپت
+      // فرار کنه و کد دلخواه اجرا کنه (حتی با HTML-escape هم این بردار خاص بسته
+      // نمی‌شه، چون مرورگر قبل از اجرای onclick، entity هارو دیکد می‌کنه). به‌جاش
+      // آدرس رو تو یه data-attribute می‌ذاریم و از یه هندلر واحد می‌خونیمش.
       const caPart = contractAddr
-        ? `<span class="ca-chip" onclick="event.stopPropagation(); Views.copyContract('${contractAddr}')">📋 ${contractAddr.length > 10 ? contractAddr.slice(0, 4) + '...' + contractAddr.slice(-4) : contractAddr}</span>`
+        ? `<span class="ca-chip" data-contract="${escapeHtml(contractAddr)}" onclick="event.stopPropagation(); Views.copyContractFromEl(this)">📋 ${escapeHtml(contractAddr.length > 10 ? contractAddr.slice(0, 4) + '...' + contractAddr.slice(-4) : contractAddr)}</span>`
         : '';
 
       const callerPart = callerId
@@ -86,6 +92,7 @@ const Views = {
               <span class="token-name">${coinTitle}</span>
               <span class="badge-chain">${channelTitle}</span>
               ${s.tier === 'vip' ? '<span class="badge-vip">VIP</span>' : ''}
+              ${riskLevel === 'high' ? '<span class="badge-risk-high">🔴 پرریسک</span>' : ''}
             </div>
             <div class="roi-badge ${roiClass}">${roiText}</div>
           </div>
@@ -96,6 +103,11 @@ const Views = {
         </div>
       `;
     }).join('');
+  },
+
+  copyContractFromEl(el) {
+    const addr = el.getAttribute('data-contract');
+    if (addr) this.copyContract(addr);
   },
 
   copyContract(address) {
@@ -116,36 +128,47 @@ const Views = {
 
     const session = App.state.session;
     const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin);
     const body = document.getElementById('sheetContent');
     if (!body) return;
 
-    const coinTitle = s.coin || s.symbol || '—';
-    const channelTitle = (s.channel || s.category || 'DEX').toUpperCase();
+    const coinTitle = escapeHtml(s.coin || s.symbol || '—');
+    const channelTitle = escapeHtml((s.channel || s.category || 'DEX').toUpperCase());
     const contractAddr = s.contract_address || s.ca || null;
-    const buyLink = s.buy_link || s.link || null;
+    const buyLink = safeUrl(s.buy_link || s.link || null);
     const chartImg = s.before_img || s.image || null;
+    const noteText = escapeHtml(s.note || '').replace(/\n/g, '<br>');
+    const riskLevel = s.risk_level || 'low';
 
     body.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <h3 style="font-size:17px; font-weight:700;">${coinTitle}</h3>
-        <span class="badge-chain">${channelTitle}</span>
+        <div style="display:flex; gap:6px;">
+          <span class="badge-chain">${channelTitle}</span>
+          ${riskLevel === 'high' ? '<span class="badge-risk-high">🔴 پرریسک</span>' : ''}
+        </div>
       </div>
-      
+
+      ${riskLevel === 'high' ? `
+        <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:var(--red);">
+          ⚠️  این سیگنال پرریسکه — برای مدیریت سرمایه، حجم ورودت رو محدود نگه دار.
+        </div>` : ''
+      }
+
       ${chartImg ? `
         <div style="margin-bottom:14px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); background:var(--bg);">
-          <img src="${chartImg}" style="width:100%; display:block; max-height:260px; object-fit:contain;" alt="Chart">
+          <img src="${escapeHtml(chartImg)}" style="width:100%; display:block; max-height:260px; object-fit:contain;" alt="Chart">
         </div>` : ''
       }
 
       ${contractAddr ? `
         <div style="background:var(--bg); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:12px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="mono" style="color:var(--text); word-break:break-all; font-size:11px;">${contractAddr}</span>
-          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px; margin-right:8px;" onclick="Views.copyContract('${contractAddr}')">کپی</button>
+          <span class="mono" style="color:var(--text); word-break:break-all; font-size:11px;" data-contract="${escapeHtml(contractAddr)}">${escapeHtml(contractAddr)}</span>
+          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px; margin-right:8px;" onclick="Views.copyContractFromEl(this.previousElementSibling)">کپی</button>
         </div>` : ''
       }
 
-      ${s.note ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${s.note}</p>` : ''}
+      ${noteText ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${noteText}</p>` : ''}
 
       ${(!window.Telegram?.WebApp?.initData && buyLink) ? `
         <a href="${buyLink}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
@@ -232,13 +255,13 @@ const Views = {
           <div class="card-atomic-top">
             <div class="token-meta">
               <span class="mono" style="color:var(--accent-light); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">👤 ${r.caller_name || 'ناشناس'}</span>
+              <span class="token-name">👤 ${escapeHtml(r.caller_name || 'ناشناس')}</span>
             </div>
-            <span style="color:var(--gold); font-size:12.5px; font-weight:700;">★ ${r.avg_rating || '5.0'}</span>
+            <span style="color:var(--gold); font-size:12.5px; font-weight:700;">★ ${escapeHtml(r.avg_rating || '5.0')}</span>
           </div>
           <div class="card-atomic-bottom">
-            <span>${r.count || 0} کال ثبت‌شده</span>
-            <span>${r.tier ? r.tier.toUpperCase() : 'BRONZE'}</span>
+            <span>${escapeHtml(r.count || 0)} کال ثبت‌شده</span>
+            <span>${escapeHtml(r.tier ? r.tier.toUpperCase() : 'BRONZE')}</span>
           </div>
         </div>
       `).join('');
@@ -248,13 +271,13 @@ const Views = {
           <div class="card-atomic-top">
             <div class="token-meta">
               <span class="mono" style="color:var(--accent-light); font-weight:700;">#${i + 1}</span>
-              <span class="token-name">📡 ${r.full_name || r.username || 'کاربر'}</span>
+              <span class="token-name">📡 ${escapeHtml(r.full_name || r.username || 'کاربر')}</span>
             </div>
-            <span style="color:var(--green); font-size:12.5px; font-weight:700;" class="mono">${r.points || 0} pt</span>
+            <span style="color:var(--green); font-size:12.5px; font-weight:700;" class="mono">${escapeHtml(r.points || 0)} pt</span>
           </div>
           <div class="card-atomic-bottom">
-            <span>${r.count || 0} سیگنال · ${r.wins || 0} برد</span>
-            <span>سطح ${r.level || 1}</span>
+            <span>${escapeHtml(r.count || 0)} سیگنال · ${escapeHtml(r.wins || 0)} برد</span>
+            <span>سطح ${escapeHtml(r.level || 1)}</span>
           </div>
         </div>
       `).join('');
@@ -278,7 +301,7 @@ const Views = {
 
     const session = App.state.session;
     const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin);
 
     if (App.state.academyTab === 'strategies') {
       if (!App.state.strategies || !App.state.strategies.length) {
@@ -297,8 +320,8 @@ const Views = {
 
       listEl.innerHTML = App.state.strategies.map(st => `
         <div class="card-atomic" style="cursor:default;">
-          <h4 style="font-size:13.5px; font-weight:700; margin-bottom:6px; color:var(--text);">${st.title || 'ستاپ معاملاتی'}</h4>
-          <p style="font-size:12px; color:var(--text-muted); line-height:1.75;">${st.desc || st.body || ''}</p>
+          <h4 style="font-size:13.5px; font-weight:700; margin-bottom:6px; color:var(--text);">${escapeHtml(st.title || 'ستاپ معاملاتی')}</h4>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.75;">${escapeHtml(st.desc || st.body || '')}</p>
         </div>
       `).join('');
     } else {
@@ -337,20 +360,21 @@ const Views = {
         <div class="articles-grid">
           ${sortedArticles.map(art => {
             const headerImg = art.image || art.header_image || null;
-            const snippet = art.desc || (art.body ? art.body.slice(0, 90) : '') || '';
-            const dateStr = art.created_at ? String(art.created_at).split(' ')[0] : 'اخیر';
+            const title = escapeHtml(art.title || 'مقاله آموزشی');
+            const snippet = escapeHtml(art.desc || (art.body ? art.body.slice(0, 90) : '') || '');
+            const dateStr = escapeHtml(art.created_at ? String(art.created_at).split(' ')[0] : 'اخیر');
 
             return `
               <div class="article-grid-card" onclick="Views.openArticleReader(${art.id})">
                 <div class="article-grid-cover">
                   ${headerImg ? `
-                    <img src="${headerImg}" alt="${art.title || ''}" loading="lazy">
+                    <img src="${escapeHtml(headerImg)}" alt="${title}" loading="lazy">
                   ` : `
                     <div class="cover-placeholder">📰</div>
                   `}
                 </div>
                 <div class="article-grid-body">
-                  <h4 class="article-grid-title">${art.title || 'مقاله آموزشی'}</h4>
+                  <h4 class="article-grid-title">${title}</h4>
                   <p class="article-grid-snippet">${snippet}</p>
                   <div class="article-grid-meta">
                     <span class="mono">${dateStr}</span>
@@ -374,24 +398,29 @@ const Views = {
 
     const session = App.state.session;
     const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin || Number(tgUid) === 2088114041);
+    const isAdmin = Boolean(session?.is_admin || session?.is_super_admin);
     const body = document.getElementById('sheetContent');
     if (!body) return;
 
     const headerImg = art.image || art.header_image || null;
-    const fullText = art.body || art.desc || '';
-    const dateStr = art.created_at || '—';
+    // ⚠️ فیکس XSS: قبلاً کل متن مقاله (که از یه textarea ساده میاد، نه ادیتور
+    // HTML) مستقیم به‌عنوان HTML رندر می‌شد. حالا escape می‌شه و فقط خط‌های
+    // جدید (که خودمون اضافه می‌کنیم، نه از ورودی کاربر) به <br> تبدیل می‌شن تا
+    // ظاهر چندخطی مقاله حفظ بشه.
+    const fullText = escapeHtml(art.body || art.desc || '').replace(/\n/g, '<br>');
+    const title = escapeHtml(art.title || 'مقاله آموزشی');
+    const dateStr = escapeHtml(art.created_at || '—');
 
     body.innerHTML = `
       <div class="article-reader-container">
         ${headerImg ? `
           <div class="article-reader-cover">
-            <img src="${headerImg}" alt="${art.title || ''}">
+            <img src="${escapeHtml(headerImg)}" alt="${title}">
           </div>
         ` : ''}
 
         <div class="article-reader-header">
-          <h2 class="article-reader-title">${art.title || 'مقاله آموزشی'}</h2>
+          <h2 class="article-reader-title">${title}</h2>
           <div class="article-reader-meta">
             <span class="mono">📅 ${dateStr}</span>
             <span class="article-read-badge">📚 MemeLand Academy</span>

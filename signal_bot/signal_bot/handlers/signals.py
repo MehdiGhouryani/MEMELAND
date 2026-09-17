@@ -37,14 +37,14 @@ from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from signal_bot.config.settings import SEP, ADMIN_IDS, SIGNAL_TYPE_LABELS, PUBLIC_FEED_LIMIT, RESULT_LABEL, CHANNEL_LABELS, DEFAULT_CHANNEL
+from signal_bot.config.settings import SEP, ADMIN_IDS, SIGNAL_TYPE_LABELS, PUBLIC_FEED_LIMIT, RESULT_LABEL, CHANNEL_LABELS, DEFAULT_CHANNEL, RISK_LEVEL_LABELS, DEFAULT_RISK_LEVEL
 from signal_bot.db import signals_repo, users_repo, staff_repo
 from signal_bot.services import access, alpha_score, results, site_sync, image_upload
 from signal_bot.services.notify import safe_send_message, safe_send_photo
 from signal_bot.formatters.texts import my_signals_text
 from signal_bot.keyboards.keyboards import (
     mysignals_filter_kb, signal_menu_kb, back_main_kb, cancel_kb, direction_kb,
-    approve_reject_kb, signal_result_kb, my_results_list_kb, channel_picker_kb, btn
+    approve_reject_kb, signal_result_kb, my_results_list_kb, channel_picker_kb, risk_picker_kb, btn
 )
 from signal_bot.utils import esc
 from signal_bot.handlers.common import guard_callback
@@ -73,6 +73,22 @@ def _extract_channel(tail_tokens):
         if tok.lower() in CHANNEL_LABELS:
             return tok.lower(), tail_tokens[:i] + tail_tokens[i+1:]
     return DEFAULT_CHANNEL, tail_tokens
+
+
+def _extract_risk(tail_tokens):
+    """هم‌الگو با _extract_channel، برای فیچر جدید سطح ریسک: اگه یکی از
+    توکن‌ها high/low (یا معادل فارسیش) بود، به‌عنوان ریسک برداشته می‌شه.
+    پیدا نشه → DEFAULT_RISK_LEVEL (کم‌ریسک) — یعنی /fastcall قدیمی بدون این
+    آرگومان دقیقاً مثل قبل رفتار می‌کنه."""
+    aliases = {
+        "high": "high", "highrisk": "high", "پرریسک": "high",
+        "low": "low", "lowrisk": "low", "کم‌ریسک": "low", "کمریسک": "low",
+    }
+    for i, tok in enumerate(tail_tokens):
+        key = aliases.get(tok.lower())
+        if key:
+            return key, tail_tokens[:i] + tail_tokens[i+1:]
+    return DEFAULT_RISK_LEVEL, tail_tokens
 
 
 def _parse_signal_text(text: str):
@@ -198,10 +214,29 @@ async def signals_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if channel not in CHANNEL_LABELS:
             channel = DEFAULT_CHANNEL
         context.chat_data["channel"] = channel
+        # ⚠️ فیچر جدید: بعد از کانال، سطح ریسک رو می‌پرسیم؛ فقط بعدش می‌ریم
+        # سراغ محتوا/کوین. دقیقاً هم‌الگو با قدمِ کانال (که خودش قبلاً همینجوری
+        # اضافه شده بود).
+        await q.edit_message_text(
+            f"{'📸  Full Signal' if pending == 'full' else '⚡  Fast Call'}  ·  {CHANNEL_LABELS[channel]}\n{SEP}\n\n"
+            f"سطح ریسک این سیگنال چقدره؟",
+            reply_markup=risk_picker_kb(), parse_mode=ParseMode.HTML
+        )
+
+    elif data.startswith("risk_"):
+        pending = context.chat_data.get("pending_type")
+        if pending not in ("full", "fast") or "channel" not in context.chat_data:
+            await q.edit_message_text("این مرحله منقضی شده. از منو دوباره شروع کن.", reply_markup=back_main_kb())
+            return
+        risk_level = data[len("risk_"):]
+        if risk_level not in RISK_LEVEL_LABELS:
+            risk_level = DEFAULT_RISK_LEVEL
+        context.chat_data["risk_level"] = risk_level
+        channel = context.chat_data["channel"]
         if pending == "full":
             context.chat_data["signal_step"] = "full_content"
             await q.edit_message_text(
-                f"<b>📸  Full Signal</b>  ·  {CHANNEL_LABELS[channel]}\n{SEP}\n\n"
+                f"<b>📸  Full Signal</b>  ·  {CHANNEL_LABELS[channel]}  ·  {RISK_LEVEL_LABELS[risk_level]}\n{SEP}\n\n"
                 f"عکس تحلیل/سیگنالت رو بفرست، یا اگه عکس نداری، همینجا متنی بنویسش.\n"
                 f"می‌تونی اسم کوین و جهت (Long/Short) رو هم داخلش بنویسی — اختیاریه.",
                 reply_markup=cancel_kb(), parse_mode=ParseMode.HTML
@@ -209,7 +244,7 @@ async def signals_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             context.chat_data["signal_step"] = "fast_coin"
             await q.edit_message_text(
-                f"<b>⚡  Fast Call</b>  ·  {CHANNEL_LABELS[channel]}\n{SEP}\n\n"
+                f"<b>⚡  Fast Call</b>  ·  {CHANNEL_LABELS[channel]}  ·  {RISK_LEVEL_LABELS[risk_level]}\n{SEP}\n\n"
                 f"🪙  اسم کوین/توکن (یا آدرس قرارداد) رو بنویس:\nمثال: <code>PEPE</code>",
                 reply_markup=cancel_kb(), parse_mode=ParseMode.HTML
             )
@@ -419,6 +454,7 @@ async def _submit_signal(q_or_msg, context, user, signal_type: str):
             description=d.get("description", ""),
             photo_file_id=d.get("photo_file_id", ""),
             channel=d.get("channel", DEFAULT_CHANNEL),
+            risk_level=d.get("risk_level", DEFAULT_RISK_LEVEL),
         )
     except Exception as e:
         logging.error(f"خطا در ذخیره سیگنال کاربر {user.id}: {e}")
@@ -435,6 +471,14 @@ async def _submit_signal(q_or_msg, context, user, signal_type: str):
     if d.get("direction"):
         emoji = "🟢" if d["direction"] == "LONG" else "🔴"
         dir_part = f"  {emoji} {d['direction']}"
+    risk_level = d.get("risk_level", DEFAULT_RISK_LEVEL)
+    risk_part = f"  {RISK_LEVEL_LABELS.get(risk_level, '')}"
+    # ⚠️ فیچر جدید (خواسته‌ی شریک): هشدار مدیریت سرمایه فقط برای پرریسک، تا
+    # به کاربر یادآوری بشه که برای سود پایدار بهتره رو کم‌ریسک‌ها تمرکز کنه.
+    risk_warning = (
+        "\n\n⚠️  <b>این سیگنال پرریسکه.</b> برای مدیریت سرمایه، حجم ورودت رو محدود نگه دار."
+        if risk_level == "high" else ""
+    )
 
     # ── انتشار خودکار برای رول‌های بالا (Guardian و بالاتر — طبق خواسته‌ی
     # کارفرما: «به افراد مشخص دسترسی بدم که تو سهمیه‌شون بدون تأیید ادمین
@@ -450,22 +494,25 @@ async def _submit_signal(q_or_msg, context, user, signal_type: str):
         await site_sync.push_signal_created(
             bot_signal_id=signal_id, owner_telegram_id=user.id, coin=d.get("coin"),
             direction=d.get("direction"), signal_type=signal_type, note=d.get("description", ""),
-            photo_url=photo_url, channel=d.get("channel", DEFAULT_CHANNEL), caller_name=user.full_name
+            photo_url=photo_url, channel=d.get("channel", DEFAULT_CHANNEL), caller_name=user.full_name,
+            risk_level=risk_level
         )
 
     if auto_published:
         text = (
             f"✅  <b>سیگنال #{signal_id} ثبت و منتشر شد!</b>\n{SEP}\n\n"
-            f"{type_label}  <b>{esc(d.get('coin')) or '—'}</b>{dir_part}\n"
+            f"{type_label}  <b>{esc(d.get('coin')) or '—'}</b>{dir_part}{risk_part}\n"
             f"{SEP}\n\n"
             f"🚀  درجه‌ی شما ({esc(access.get_role_label(role))}) نیاز به تأیید ادمین نداره — "
             f"مستقیم توی فید عمومی و لیدربورد قرار گرفت."
+            f"{risk_warning}"
         )
     else:
         text = (
             f"✅  <b>سیگنال #{signal_id} ثبت شد!</b>\n{SEP}\n\n"
-            f"{type_label}  <b>{esc(d.get('coin')) or '—'}</b>{dir_part}\n"
+            f"{type_label}  <b>{esc(d.get('coin')) or '—'}</b>{dir_part}{risk_part}\n"
             f"{SEP}\n\n⏳  منتظر تأیید ادمین/VIP Helper باش..."
+            f"{risk_warning}"
         )
     kb = InlineKeyboardMarkup([[btn("🔙  منوی اصلی", "back_main", "primary")]])
 
@@ -483,7 +530,7 @@ async def _submit_signal(q_or_msg, context, user, signal_type: str):
     admin_caption = (
         header +
         f"👤  {esc(user.full_name)} (@{esc(user.username) or '—'})  —  {esc(access.get_role_label(role))}\n"
-        f"{esc(d.get('coin')) or '—'}{dir_part}"
+        f"{esc(d.get('coin')) or '—'}{dir_part}{risk_part}"
     )
     if d.get("description"):
         admin_caption += f"\n📝  {esc(d['description'][:300])}"
@@ -544,9 +591,9 @@ async def cmd_fastcall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args_text = raw[1].strip() if len(raw) > 1 else ""
     if not args_text:
         await update.message.reply_text(
-            "استفاده: /fastcall COIN [long/short] [alt/dex/stock/irbourse]\n"
-            "مثال: /fastcall PEPE long dex\n"
-            "کانال اختیاریه، پیش‌فرض «آلت‌کوین»ه."
+            "استفاده: /fastcall COIN [long/short] [alt/dex/stock/irbourse] [low/high]\n"
+            "مثال: /fastcall PEPE long dex high\n"
+            "کانال و سطح ریسک اختیاری‌ان، پیش‌فرض «آلت‌کوین» و «کم‌ریسک»."
         )
         return
 
@@ -554,12 +601,14 @@ async def cmd_fastcall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     coin = tokens[0][:50]
     direction = _detect_direction(args_text)
     channel, _rest = _extract_channel(tokens[1:])
+    risk_level, _rest = _extract_risk(_rest)
 
     context.chat_data.clear()
     context.chat_data["coin"] = coin
     context.chat_data["direction"] = direction
     context.chat_data["description"] = ""
     context.chat_data["channel"] = channel
+    context.chat_data["risk_level"] = risk_level
     await _submit_signal(update.message, context, user, signal_type="fast")
 
 

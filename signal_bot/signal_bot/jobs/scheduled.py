@@ -27,6 +27,9 @@ async def check_entry_alerts(context: ContextTypes.DEFAULT_TYPE):
     آلارم می‌ده (entry_alert_sent جلوی تکرار رو می‌گیره).
     direction='long' یعنی ورود = خرید افت‌قیمت → آلارم وقتی قیمت <= entry.
     direction='short' برعکس → آلارم وقتی قیمت >= entry.
+    ⚠️ فیچر جدید: درصد تغییر نسبت به قیمت ورود هم تو پیام آلارم محاسبه و
+    نشون داده می‌شه (خواسته‌ی شریک — نیازی به API جدید نداشت، صرفاً همون
+    entry_price که از قبل ذخیره‌ست).
     خطای هر API/عدم تنظیم CHANNEL_ID فقط لاگ می‌شه، جاب کرش نمی‌کنه."""
     if not CHANNEL_ID:
         return
@@ -43,8 +46,12 @@ async def check_entry_alerts(context: ContextTypes.DEFAULT_TYPE):
         hit = price >= entry if sig["direction"] == "short" else price <= entry
         if not hit:
             continue
+        pct = ((price - entry) / entry * 100) if entry else 0.0
+        pct_sign = "+" if pct >= 0 else ""
+        pct_emoji = "🟢" if pct >= 0 else "🔴"
         text = (f"🔔 <b>{sig['coin'] or 'سیگنال'}</b> به قیمت ورود رسید!\n"
-                f"قیمت لحظه‌ای: <code>{price}</code> — ورود: <code>{entry}</code>")
+                f"قیمت لحظه‌ای: <code>{price}</code> — ورود: <code>{entry}</code>\n"
+                f"تغییر نسبت به ورود: {pct_emoji} <code>{pct_sign}{pct:.2f}%</code>")
         if await safe_send_message(context.bot, chat_id=CHANNEL_ID, text=text, parse_mode=ParseMode.HTML):
             site_signals.mark_entry_alert_sent(sig["id"])
 
