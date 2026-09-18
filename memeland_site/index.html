@@ -93,8 +93,30 @@
         </button>
       </div>
 
-      <div class="search-wrap">
+      <div class="search-wrap" style="display:flex; flex-direction:column; gap:8px;">
         <input type="text" id="tokenSearchInput" placeholder="🔍 جستجوی نماد ($PEPE, SOL...)" oninput="App.onSearchInput(this.value)">
+        <div id="filterChipsRow" class="filter-chips-row">
+          <select id="chipSort" class="filter-chip" onchange="Views.onChipFilterChange()">
+            <option value="newest">🕐 جدیدترین</option>
+            <option value="oldest">🕓 قدیمی‌ترین</option>
+          </select>
+          <select id="chipTimeRange" class="filter-chip" onchange="Views.onChipFilterChange()">
+            <option value="all">⏱ همه‌ی بازه‌ها</option>
+            <option value="today">امروز</option>
+            <option value="week">این هفته</option>
+            <option value="month">این ماه</option>
+          </select>
+          <select id="chipChannel" class="filter-chip" onchange="Views.onChipFilterChange()">
+            <option value="all">📡 همه‌ی کانال‌ها</option>
+            <option value="dex">🦄 دکس</option>
+            <option value="alt">🪙 آلت‌کوین</option>
+            <option value="stock">📈 بورس جهانی</option>
+            <option value="irbourse">🇮🇷 بورس ایران</option>
+          </select>
+          <button id="riskFilterBtn" class="filter-chip filter-chip-icon" onclick="Views.openRiskFilterPanel()">
+            ⚠️<span id="filterActiveDot" class="filter-active-dot" style="display:none;"></span>
+          </button>
+        </div>
       </div>
 
       <div id="signalsFeedList" class="cards-feed"></div>

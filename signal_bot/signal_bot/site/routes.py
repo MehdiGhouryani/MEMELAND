@@ -67,25 +67,46 @@ def _resolve_user_session(request: web.Request, body_data: dict = None):
                 return auth_res
 
     user_id_hdr = request.headers.get("X-Telegram-User-Id")
+    # ⚠️ فیکس مقاوم‌سازی (شبکه): قبلاً فقط هدر چک می‌شد. کلاینت (api.js) از
+    # قبل user_id رو تو بدنه‌ی همون درخواست هم می‌فرسته، ولی این‌جا هیچ‌وقت
+    # خونده نمی‌شد. اگه یه پروکسی جلوی سرور (مثلاً nginx بدون تنظیم صریح
+    # proxy_set_header) هدرهای سفارشی رو حذف کنه — یه اشتباه پیکربندی خیلی
+    # رایج — بدنه‌ی POST همیشه دست‌نخورده می‌رسه، پس این fallback دقیقاً
+    # برای همین سناریو لازمه.
+    if not user_id_hdr and body_data and isinstance(body_data, dict):
+        body_uid = body_data.get("user_id")
+        if body_uid:
+            user_id_hdr = str(body_uid)
+
     if user_id_hdr and user_id_hdr.isdigit():
+        # 🚨 فیکس امنیتی بحرانی: این مسیر (هدر/بدنه‌ی X-Telegram-User-Id)
+        # هیچ اعتبارسنجی رمزنگاری‌شده‌ای نداره — هرکسی با یه curl ساده
+        # می‌تونه ادعا کنه آیدی‌ش هرچیزیه (آیدی تلگرام اصلاً محرمانه نیست،
+        # از پیام‌های فوروارد‌شده/کانال‌های عمومی قابل‌کشفه). قبلاً این مسیر
+        # بدون هیچ محدودیتی is_admin/is_super_admin واقعی برمی‌گردوند — یعنی
+        # هرکسی که آیدی یه ادمین رو می‌دونست، بدون هیچ اثبات هویتی، سشن کامل
+        # ادمین می‌گرفت. الان این مسیر فقط برای شناسایی سطح «عضو عادی» مجازه؛
+        # is_admin/is_super_admin همیشه False می‌مونن، مهم نیست get_user_role_
+        # and_quota چی برگردونه. برای گرفتن سشن ادمین واقعی، فقط دو راه امنه:
+        # توکن سشن معتبر (خط بالا) یا initData امضاشده‌ی واقعی تلگرام.
         uid = int(user_id_hdr)
-        quota_info = auth.get_user_role_and_quota(uid)
         prof = auth.get_profile(uid)
-        
+
         token = auth.create_session(
             telegram_id=uid,
             first_name=prof.get("display_name") or f"User_{uid}",
-            role="admin" if quota_info["is_admin"] else "member"
+            role="member"
         )
 
         return {
             "token": token,
             "telegram_id": uid,
             "display_name": prof.get("display_name") or f"User_{uid}",
-            "role": "admin" if quota_info["is_admin"] else "member",
-            "is_admin": quota_info["is_admin"],
-            "is_super_admin": quota_info["is_super_admin"],
-            "quota": quota_info,
+            "role": "member",
+            "is_admin": False,
+            "is_super_admin": False,
+            "quota": auth.get_user_role_and_quota(uid),
+            "unverified": True,
         }
 
     return None
@@ -165,6 +186,17 @@ async def handle_webapp_auth(request: web.Request) -> web.Response:
         return _json_error(400, "invalid json")
 
     init_data = payload.get("init_data") or payload.get("initData")
+    # ⚠️ تشخیصی: این خط دقیقاً می‌گه سرور چی گرفته (طول init_data، وجود هدرهای
+    # تلگرام، user_id تو بدنه) — با مقایسه‌ش با لاگ AuthAttempt سمت کلاینت،
+    # می‌فهمیم اگه initData خالی می‌رسه، مشکل قبل از رسیدن به سرور بوده
+    # (یعنی خودِ کلاینت خالی فرستاده) یا رسیده ولی همینجا رد شده.
+    logger.info(
+        f"WebAppAuthReq: path={request.path} initDataLen={len(init_data or '')} "
+        f"hasInitHeader={bool(request.headers.get('X-Telegram-Init-Data'))} "
+        f"hdrUserId={request.headers.get('X-Telegram-User-Id')} "
+        f"bodyUserId={payload.get('user_id')}"
+    )
+
     if not init_data:
         session = _resolve_user_session(request, payload)
         if session:

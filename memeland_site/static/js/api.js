@@ -86,6 +86,13 @@ const API = {
     const tgUser = tg?.initDataUnsafe?.user;
     const uid = tgUser?.id ? String(tgUser.id) : '';
 
+    // ⚠️ تشخیصی: این خط دقیقاً می‌گه موقع تلاش لاگین، initData امضاشده
+    // اصلاً وجود داشته یا نه (طول رشته‌ش رو نشون می‌ده، نه خودش رو، برای
+    // امنیت) و آیدی تلگرام از کجا خونده شده. با این، دفعه‌ی بعد که مشکل
+    // لاگین پیش بیاد، می‌فهمیم مشکل سمت کلاینته (initData اصلاً خالیه) یا
+    // سمت سرور (initData هست ولی رد می‌شه).
+    this.log(`AuthAttempt: hasTg=${Boolean(tg)} initDataLen=${initData.length} tgUserId=${uid || 'none'}`);
+
     const payload = {
       init_data: initData,
       user_id: uid,
@@ -106,8 +113,19 @@ const API = {
           authData = await resp.json();
           this.log(`AuthSuccess: url=${url} uid=${authData.telegram_id || uid} adm=${Boolean(authData.is_admin)}`);
           break;
+        } else {
+          // ⚠️ فیکس: قبلاً این حالت (سرور جواب داد ولی status خطا بود، مثلاً
+          // ۴۰۰/۴۰۱) اصلاً لاگ نمی‌شد — یعنی هیچ ردی از این‌که چرا لاگین رد
+          // شده باقی نمی‌موند. الان status و متن خطای واقعی سرور ثبت می‌شه.
+          const errBody = await resp.text().catch(() => '');
+          this.log(`AuthHTTPFail: url=${url} status=${resp.status} body=${errBody.slice(0, 200)}`);
         }
-      } catch (err) {}
+      } catch (err) {
+        // ⚠️ فیکس: قبلاً هر خطای شبکه/fetch (مثلاً CORS، قطعی اتصال، آدرس
+        // اشتباه) کاملاً بی‌صدا نادیده گرفته می‌شد — دقیقاً همون چیزی که
+        // باعث می‌شد نتونیم بفهمیم چرا لاگین همیشه شکست می‌خوره.
+        this.log(`AuthFetchErr: url=${url} err=${err.message || err}`);
+      }
     }
 
     if (authData && authData.token) {
@@ -126,13 +144,20 @@ const API = {
         this.clearToken();
         return null;
       }
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        // ⚠️ فیکس: قبلاً این حالت (نه ۴۰۱، ولی بازم ناموفق — مثلاً ۵۰۰) کاملاً
+        // بی‌صدا null برمی‌گردوند.
+        this.log(`GetSessionHTTPFail: status=${resp.status}`);
+        return null;
+      }
       const data = await resp.json();
       if (data && data.token) {
         this.setToken(data.token);
       }
       return data;
     } catch (e) {
+      // ⚠️ فیکس: خطای شبکه/fetch اینجا هم قبلاً کاملاً بی‌صدا بود.
+      this.log(`GetSessionErr: ${e.message || e}`);
       return null;
     }
   },

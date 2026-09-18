@@ -36,7 +36,11 @@ const App = {
     academyTab: 'strategies',
     strategies: [],
     articles: [],
-    staffList: []
+    staffList: [],
+    // ⚠️ فیچر جدید: فیلتر/سورت سیگنال‌ها (دکمه ⚙️ کنار جستجو). مقدار
+    // پیش‌فرض «همه چیز، جدیدترین اول» — دقیقاً همون رفتار قبلی، تا کسی که
+    // هیچ‌وقت فیلتر نمی‌زنه چیزی عوض نشه.
+    signalFilters: { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' }
   },
 
   haptic(type = 'light') {
@@ -49,16 +53,58 @@ const App = {
     }
   },
 
+  // فیلتر انتخابی کاربر بین باز کردن‌های بعدی اپ باقی می‌مونه (دقیقاً مثل
+  // اکثر اپ‌ها/سایت‌ها — مثلاً همون رفتار فیلتر تو اپ‌های فروشگاهی) تا هربار
+  // مجبور نشه از اول تنظیم کنه.
+  loadSignalFilters() {
+    try {
+      const raw = localStorage.getItem('mh_signal_filters');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        this.state.signalFilters = Object.assign({}, this.state.signalFilters, saved);
+      }
+    } catch (e) { /* دیتای خراب تو localStorage نباید کل اپ رو بترکونه */ }
+  },
+
+  saveSignalFilters() {
+    try {
+      localStorage.setItem('mh_signal_filters', JSON.stringify(this.state.signalFilters));
+    } catch (e) {}
+  },
+
+  isSignalFiltersDefault() {
+    const f = this.state.signalFilters;
+    return f.sort === 'newest' && f.timeRange === 'all' && f.channel === 'all' && f.risk === 'all';
+  },
+
+  // ⚠️ فیکس: بعد از تبدیل ۳ فیلتر به چیپ‌های همیشه-نمایان (که خودشون مقدار
+  // فعلی‌شون رو نشون می‌دن)، فقط سطح ریسک پشت آیکونه — پس نقطه‌ی فعال باید
+  // فقط همینو نشون بده، نه هر ۴ تا رو (وگرنه با انتخاب یه کانال خاص، نقطه
+  // رو آیکون ریسک روشن می‌شد که گمراه‌کننده‌ست).
+  updateFilterActiveDot() {
+    const dot = document.getElementById('filterActiveDot');
+    if (dot) dot.style.display = (this.state.signalFilters.risk === 'all') ? 'none' : 'block';
+  },
+
   async init() {
     if (this._initialized) return;
     this._initialized = true;
+
+    this.loadSignalFilters();
 
     if (window.TGBridge && typeof TGBridge.init === 'function') {
       TGBridge.init();
     }
     this.startSplashTicker();
-    
-    const safetyTimer = setTimeout(() => this.hideSplash(), 2200);
+
+    // ⚠️ فیکس: قبلاً splashStartedAt/MIN_SPLASH_MS وجود نداشت — به محض
+    // تموم‌شدن try (که می‌تونه خیلی سریع باشه، مثلاً ۳۰۰ میلی‌ثانیه)، فقط
+    // ۱۵۰ میلی‌ثانیه صبر می‌کرد و اسپلش رو مخفی می‌کرد. safetyTimer در واقع
+    // فقط یه سقفِ حداکثر انتظار بود (برای وقتی چیزی گیر می‌کنه)، نه تضمین
+    // حداقل نمایش. الان اسپلش حداقل ۲ ثانیه (خواسته‌ی شما) نمایش داده می‌شه.
+    const MIN_SPLASH_MS = 2000;
+    const splashStartedAt = Date.now();
+    const safetyTimer = setTimeout(() => this.hideSplash(), 8000);
 
     try {
       let session = null;
@@ -78,6 +124,9 @@ const App = {
       this.updateUserInterface();
 
       if (window.Views) {
+        if (typeof Views.syncFilterChipsUI === 'function') {
+          Views.syncFilterChipsUI();
+        }
         if (typeof Views.renderSignalsList === 'function') {
           Views.renderSignalsList();
         } else if (typeof Views.renderCurrent === 'function') {
@@ -108,7 +157,9 @@ const App = {
       window.sendRemoteLog(`JSERR: Init ${err.message || err}`);
     } finally {
       clearTimeout(safetyTimer);
-      setTimeout(() => this.hideSplash(), 150);
+      const elapsed = Date.now() - splashStartedAt;
+      const remaining = Math.max(0, MIN_SPLASH_MS - elapsed);
+      setTimeout(() => this.hideSplash(), remaining + 150);
     }
   },
 

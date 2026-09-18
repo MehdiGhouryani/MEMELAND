@@ -28,14 +28,31 @@ const Views = {
   },
 
   // ================= تب سیگنال‌ها =================
+
+  // ⚠️ فیچر جدید (فیلتر ⚙️): بازه‌های ثابت به‌صورت پنجره‌ی متحرک (rolling)
+  // حساب می‌شن (مثلاً «این هفته» یعنی ۷ روز گذشته، نه از شنبه‌ی تقویمی) —
+  // ساده‌تره و از پیچیدگی مرزهای منطقه‌زمانی جلوگیری می‌کنه.
+  _isWithinTimeRange(createdAt, range) {
+    if (range === 'all' || !createdAt) return true;
+    const created = new Date(createdAt);
+    if (isNaN(created.getTime())) return true; // تاریخ خراب/نامعتبر رو فیلتر نکن، نشونش بده
+    const diffMs = Date.now() - created.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    if (range === 'today') return diffMs <= dayMs;
+    if (range === 'week') return diffMs <= 7 * dayMs;
+    if (range === 'month') return diffMs <= 30 * dayMs;
+    return true;
+  },
+
   renderSignalsList() {
     const listEl = document.getElementById('signalsFeedList');
     if (!listEl) return;
 
     const isClosed = App.state.signalSubTab === 'closed';
     const allSignals = App.state.signals || [];
+    const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
 
-    const list = allSignals.filter(s => {
+    let list = allSignals.filter(s => {
       const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
         ? (rawStatus === 'win' || rawStatus === 'loss' || rawStatus === 'closed')
@@ -44,7 +61,17 @@ const Views = {
       const coinName = String(s.coin || s.symbol || s.name || '').toLowerCase();
       const matchSearch = !App.state.searchQuery || coinName.includes(App.state.searchQuery.toLowerCase());
 
-      return matchStatus && matchSearch;
+      const matchTime = this._isWithinTimeRange(s.created_at, f.timeRange);
+      const matchChannel = f.channel === 'all' || (s.channel || 'alt') === f.channel;
+      const matchRisk = f.risk === 'all' || (s.risk_level || 'low') === f.risk;
+
+      return matchStatus && matchSearch && matchTime && matchChannel && matchRisk;
+    });
+
+    list = list.slice().sort((a, b) => {
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return f.sort === 'oldest' ? ta - tb : tb - ta;
     });
 
     if (window.sendRemoteLog) {
@@ -215,6 +242,82 @@ const Views = {
         TGBridge.hideDockActions();
       }
     }
+  },
+
+  // ⚠️ فیچر جدید: ردیف چیپ فیلتر (شبیه CoinMarketCap) کنار جستجو. ۳ تا
+  // چیپ (مرتب‌سازی/بازه/کانال) با تغییرشون فوری اعمال می‌شن، بدون نیاز به
+  // دکمه‌ی «اعمال» جدا. سطح ریسک چون کم‌کاربردتره پشت آیکون قیف (⚠️) مونده.
+
+  syncFilterChipsUI() {
+    const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
+    const sortEl = document.getElementById('chipSort');
+    const timeEl = document.getElementById('chipTimeRange');
+    const chEl = document.getElementById('chipChannel');
+    if (sortEl) sortEl.value = f.sort;
+    if (timeEl) timeEl.value = f.timeRange;
+    if (chEl) chEl.value = f.channel;
+    App.updateFilterActiveDot();
+  },
+
+  onChipFilterChange() {
+    this.haptic('selection');
+    App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
+      sort: document.getElementById('chipSort')?.value || 'newest',
+      timeRange: document.getElementById('chipTimeRange')?.value || 'all',
+      channel: document.getElementById('chipChannel')?.value || 'all',
+    });
+    App.saveSignalFilters();
+    App.updateFilterActiveDot();
+    this.renderSignalsList();
+  },
+
+  openRiskFilterPanel() {
+    this.haptic('selection');
+    const f = App.state.signalFilters;
+    const body = document.getElementById('sheetContent');
+    if (!body) return;
+
+    body.innerHTML = `
+      <h3 style="font-size:15px; font-weight:700; margin-bottom:14px;">فیلتر سطح ریسک</h3>
+      <div class="field">
+        <select id="chipRiskModal">
+          <option value="all" ${f.risk === 'all' ? 'selected' : ''}>همه</option>
+          <option value="low" ${f.risk === 'low' ? 'selected' : ''}>🟢 کم‌ریسک</option>
+          <option value="high" ${f.risk === 'high' ? 'selected' : ''}>🔴 پرریسک</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button class="btn btn-secondary" style="flex:1;" onclick="Views.clearAllFilters()">پاک‌کردن همه‌ی فیلترها</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="Views.applyRiskFilter()">اعمال</button>
+      </div>
+    `;
+
+    const sheet = document.getElementById('bottomSheet');
+    if (sheet) sheet.classList.add('show');
+    if (window.TGBridge) {
+      TGBridge.syncBackButton(true);
+      if (typeof TGBridge.hideDockActions === 'function') TGBridge.hideDockActions();
+    }
+  },
+
+  applyRiskFilter() {
+    this.haptic('success');
+    App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
+      risk: document.getElementById('chipRiskModal')?.value || 'all',
+    });
+    App.saveSignalFilters();
+    App.updateFilterActiveDot();
+    this.closeBottomSheet();
+    this.renderSignalsList();
+  },
+
+  clearAllFilters() {
+    this.haptic('light');
+    App.state.signalFilters = { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
+    App.saveSignalFilters();
+    this.syncFilterChipsUI();
+    this.closeBottomSheet();
+    this.renderSignalsList();
   },
 
   // ================= تب لیدربورد =================
