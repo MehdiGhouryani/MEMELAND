@@ -225,10 +225,26 @@
         }).catch(function(){});
       } catch(e){}
     };
-    window.onerror = function(msg, url, line) {
+    // ⚠️ فیکس: msg/url/line خام می‌تونن به‌خاطر sandboxing وب‌ویوی تلگرام
+    // (به‌خصوص تلگرام وب/دسکتاپ که Mini App رو تو iframe لود می‌کنن) به‌صورت
+    // «Script error.» و ۰:۰ سانسور بشن — این یه محدودیت امنیتی مرورگره،
+    // نه چیزی که بشه از همینجا دورش زد. errorObj (پارامتر پنجم) بعضی مرورگرا
+    // پرش می‌کنن حتی وقتی msg سانسور شده؛ اگه بود، stack واقعی رو می‌گیریم.
+    window.onerror = function(msg, url, line, col, errorObj) {
       var file = (url || '').split('/').pop();
-      window.sendRemoteLog('JSERR: ' + msg + ' @ ' + file + ':' + line);
+      var extra = errorObj && errorObj.stack ? (' | stack=' + String(errorObj.stack).slice(0, 300)) : '';
+      window.sendRemoteLog('JSERR: ' + msg + ' @ ' + file + ':' + line + extra);
     };
+    // ⚠️ فیکس: قبلاً reject نشدن یه Promise (مثلاً تو یه تابع async بدون catch)
+    // هیچ‌جا لاگ نمی‌شد — window.onerror فقط throw های synchronous رو می‌گیره،
+    // نه promise rejection رو. این می‌تونه بخشی از دلیل نبود سرنخ برای خطاهای
+    // قبلی بوده باشه.
+    window.addEventListener('unhandledrejection', function(event) {
+      var reason = event.reason;
+      var msg = (reason && reason.message) || String(reason);
+      var stack = reason && reason.stack ? (' | stack=' + String(reason.stack).slice(0, 300)) : '';
+      window.sendRemoteLog('JSERR: UnhandledRejection: ' + msg + stack);
+    });
   </script>
 
   <!-- ارتقای نسخه به v=7.6.1 جهت ابطال کش وب‌ویوی تلگرام -->

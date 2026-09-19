@@ -247,77 +247,106 @@ const Views = {
   // ⚠️ فیچر جدید: ردیف چیپ فیلتر (شبیه CoinMarketCap) کنار جستجو. ۳ تا
   // چیپ (مرتب‌سازی/بازه/کانال) با تغییرشون فوری اعمال می‌شن، بدون نیاز به
   // دکمه‌ی «اعمال» جدا. سطح ریسک چون کم‌کاربردتره پشت آیکون قیف (⚠️) مونده.
+  //
+  // ⚠️ فیکس مشاهده‌پذیری: این ۵ تابع (که از onclick/onchange مستقیم صدا
+  // زده می‌شن) هرکدوم try/catch اختصاصی گرفتن. چرا این مهمه: اگه یه خطا
+  // از داخل یه هندلر inline (onclick=...) به بیرون درز کنه، به
+  // window.onerror سراسری می‌رسه که تو وب‌ویوی تلگرام (به‌خصوص نسخه‌ی
+  // وب/دسکتاپ که Mini App رو تو iframe لود می‌کنه) ممکنه به‌صورت سانسورشده
+  // ("Script error." با خط ۰) گزارش بشه — دقیقاً چیزی که تو لاگ سرور دیده
+  // شد. یه catch محلی همینجا، تو همون فایل/اسکوپ، همیشه به پیام و stack
+  // واقعی خطا دسترسی داره، مهم نیست وب‌ویو چیکار می‌کنه.
 
   syncFilterChipsUI() {
-    const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
-    const sortEl = document.getElementById('chipSort');
-    const timeEl = document.getElementById('chipTimeRange');
-    const chEl = document.getElementById('chipChannel');
-    if (sortEl) sortEl.value = f.sort;
-    if (timeEl) timeEl.value = f.timeRange;
-    if (chEl) chEl.value = f.channel;
-    App.updateFilterActiveDot();
+    try {
+      const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
+      const sortEl = document.getElementById('chipSort');
+      const timeEl = document.getElementById('chipTimeRange');
+      const chEl = document.getElementById('chipChannel');
+      if (sortEl) sortEl.value = f.sort;
+      if (timeEl) timeEl.value = f.timeRange;
+      if (chEl) chEl.value = f.channel;
+      App.updateFilterActiveDot();
+    } catch (e) {
+      window.sendRemoteLog(`JSERR: syncFilterChipsUI: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+    }
   },
 
   onChipFilterChange() {
-    this.haptic('selection');
-    App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
-      sort: document.getElementById('chipSort')?.value || 'newest',
-      timeRange: document.getElementById('chipTimeRange')?.value || 'all',
-      channel: document.getElementById('chipChannel')?.value || 'all',
-    });
-    App.saveSignalFilters();
-    App.updateFilterActiveDot();
-    this.renderSignalsList();
+    try {
+      this.haptic('selection');
+      App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
+        sort: document.getElementById('chipSort')?.value || 'newest',
+        timeRange: document.getElementById('chipTimeRange')?.value || 'all',
+        channel: document.getElementById('chipChannel')?.value || 'all',
+      });
+      App.saveSignalFilters();
+      App.updateFilterActiveDot();
+      this.renderSignalsList();
+    } catch (e) {
+      window.sendRemoteLog(`JSERR: onChipFilterChange: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+    }
   },
 
   openRiskFilterPanel() {
-    this.haptic('selection');
-    const f = App.state.signalFilters;
-    const body = document.getElementById('sheetContent');
-    if (!body) return;
+    try {
+      this.haptic('selection');
+      const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
+      const body = document.getElementById('sheetContent');
+      if (!body) return;
 
-    body.innerHTML = `
-      <h3 style="font-size:15px; font-weight:700; margin-bottom:14px;">فیلتر سطح ریسک</h3>
-      <div class="field">
-        <select id="chipRiskModal">
-          <option value="all" ${f.risk === 'all' ? 'selected' : ''}>همه</option>
-          <option value="low" ${f.risk === 'low' ? 'selected' : ''}>🟢 کم‌ریسک</option>
-          <option value="high" ${f.risk === 'high' ? 'selected' : ''}>🔴 پرریسک</option>
-        </select>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:16px;">
-        <button class="btn btn-secondary" style="flex:1;" onclick="Views.clearAllFilters()">پاک‌کردن همه‌ی فیلترها</button>
-        <button class="btn btn-primary" style="flex:1;" onclick="Views.applyRiskFilter()">اعمال</button>
-      </div>
-    `;
+      body.innerHTML = `
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:14px;">فیلتر سطح ریسک</h3>
+        <div class="field">
+          <select id="chipRiskModal">
+            <option value="all" ${f.risk === 'all' ? 'selected' : ''}>همه</option>
+            <option value="low" ${f.risk === 'low' ? 'selected' : ''}>🟢 کم‌ریسک</option>
+            <option value="high" ${f.risk === 'high' ? 'selected' : ''}>🔴 پرریسک</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button class="btn btn-secondary" style="flex:1;" onclick="Views.clearAllFilters()">پاک‌کردن همه‌ی فیلترها</button>
+          <button class="btn btn-primary" style="flex:1;" onclick="Views.applyRiskFilter()">اعمال</button>
+        </div>
+      `;
 
-    const sheet = document.getElementById('bottomSheet');
-    if (sheet) sheet.classList.add('show');
-    if (window.TGBridge) {
-      TGBridge.syncBackButton(true);
-      if (typeof TGBridge.hideDockActions === 'function') TGBridge.hideDockActions();
+      const sheet = document.getElementById('bottomSheet');
+      if (sheet) sheet.classList.add('show');
+      if (window.TGBridge && typeof TGBridge.syncBackButton === 'function') {
+        TGBridge.syncBackButton(true);
+        if (typeof TGBridge.hideDockActions === 'function') TGBridge.hideDockActions();
+      }
+    } catch (e) {
+      window.sendRemoteLog(`JSERR: openRiskFilterPanel: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
     }
   },
 
   applyRiskFilter() {
-    this.haptic('success');
-    App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
-      risk: document.getElementById('chipRiskModal')?.value || 'all',
-    });
-    App.saveSignalFilters();
-    App.updateFilterActiveDot();
-    this.closeBottomSheet();
-    this.renderSignalsList();
+    try {
+      this.haptic('success');
+      App.state.signalFilters = Object.assign({}, App.state.signalFilters, {
+        risk: document.getElementById('chipRiskModal')?.value || 'all',
+      });
+      App.saveSignalFilters();
+      App.updateFilterActiveDot();
+      this.closeBottomSheet();
+      this.renderSignalsList();
+    } catch (e) {
+      window.sendRemoteLog(`JSERR: applyRiskFilter: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+    }
   },
 
   clearAllFilters() {
-    this.haptic('light');
-    App.state.signalFilters = { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
-    App.saveSignalFilters();
-    this.syncFilterChipsUI();
-    this.closeBottomSheet();
-    this.renderSignalsList();
+    try {
+      this.haptic('light');
+      App.state.signalFilters = { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
+      App.saveSignalFilters();
+      this.syncFilterChipsUI();
+      this.closeBottomSheet();
+      this.renderSignalsList();
+    } catch (e) {
+      window.sendRemoteLog(`JSERR: clearAllFilters: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+    }
   },
 
   // ================= تب لیدربورد =================
