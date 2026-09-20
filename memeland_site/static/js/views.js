@@ -2,6 +2,11 @@
  * MemeLand Views & Feed Renderer (v7.6.0 - Direct Feed Render & Reader Mode)
  */
 
+// ⚠️ خط اثر انگشت بوت (نگاه کن به توضیح مشابه تو api.js).
+try {
+  if (window.logEvent) window.logEvent('BOOT', 'views.js loaded', { build: window.__MH_BUILD || '?' });
+} catch (e) {}
+
 const Views = {
   renderCurrent() {
     if (App.state.currentTab === 'signals') {
@@ -74,8 +79,8 @@ const Views = {
       return f.sort === 'oldest' ? ta - tb : tb - ta;
     });
 
-    if (window.sendRemoteLog) {
-      window.sendRemoteLog(`[VIEW] Render: tab=${App.state.signalSubTab}, total=${allSignals.length}, filtered=${list.length}`);
+    if (window.logEventThrottled) {
+      window.logEventThrottled('VIEW', 'render', { tab: App.state.signalSubTab, total: allSignals.length, filtered: list.length }, 30000);
     }
 
     if (list.length === 0) {
@@ -268,7 +273,7 @@ const Views = {
       if (chEl) chEl.value = f.channel;
       App.updateFilterActiveDot();
     } catch (e) {
-      window.sendRemoteLog(`JSERR: syncFilterChipsUI: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+      window.logEvent('JSERR', 'syncFilterChipsUI', { err: e.message || e, stack: (e.stack || '').slice(0, 200) });
     }
   },
 
@@ -284,7 +289,7 @@ const Views = {
       App.updateFilterActiveDot();
       this.renderSignalsList();
     } catch (e) {
-      window.sendRemoteLog(`JSERR: onChipFilterChange: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+      window.logEvent('JSERR', 'onChipFilterChange', { err: e.message || e, stack: (e.stack || '').slice(0, 200) });
     }
   },
 
@@ -317,7 +322,7 @@ const Views = {
         if (typeof TGBridge.hideDockActions === 'function') TGBridge.hideDockActions();
       }
     } catch (e) {
-      window.sendRemoteLog(`JSERR: openRiskFilterPanel: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+      window.logEvent('JSERR', 'openRiskFilterPanel', { err: e.message || e, stack: (e.stack || '').slice(0, 200) });
     }
   },
 
@@ -332,7 +337,7 @@ const Views = {
       this.closeBottomSheet();
       this.renderSignalsList();
     } catch (e) {
-      window.sendRemoteLog(`JSERR: applyRiskFilter: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+      window.logEvent('JSERR', 'applyRiskFilter', { err: e.message || e, stack: (e.stack || '').slice(0, 200) });
     }
   },
 
@@ -345,7 +350,7 @@ const Views = {
       this.closeBottomSheet();
       this.renderSignalsList();
     } catch (e) {
-      window.sendRemoteLog(`JSERR: clearAllFilters: ${e.message || e} | stack=${(e.stack || '').slice(0, 300)}`);
+      window.logEvent('JSERR', 'clearAllFilters', { err: e.message || e, stack: (e.stack || '').slice(0, 200) });
     }
   },
 

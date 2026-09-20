@@ -135,7 +135,7 @@ const Modals = {
         status.textContent = 'خطا در آپلود تصویر';
         status.style.color = 'var(--red)';
       }
-      if (window.sendRemoteLog) window.sendRemoteLog('IMG_FAIL: ' + err.message);
+      if (window.logEvent) window.logEvent('UPLOAD', 'imgFail', { err: err.message || err });
     }
   },
 

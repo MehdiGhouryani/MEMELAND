@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="/static/css/style.css?v=7.6.1">
-  <link rel="stylesheet" href="/static/css/roles.css?v=7.6.1">
-  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=7.6.1">
+  <link rel="stylesheet" href="/static/css/style.css?v=7.6.2">
+  <link rel="stylesheet" href="/static/css/roles.css?v=7.6.2">
+  <link rel="stylesheet" href="/static/css/pull_refresh.css?v=7.6.2">
 </head>
 <body>
 
@@ -214,8 +214,20 @@
     </div>
   </div>
 
-  <!-- لاگر کلاینت -->
+  <!-- لاگر کلاینت — مکانیزم جدید و ساختاریافته -->
   <script>
+    // ⚠️ این عدد رو هر بار محتوای واقعی یکی از ۴ فایل اصلی (api.js/app.js/
+    // views.js/index.html) عوض شد دستی بالا ببرید. با این، یه خط [BOOT] از
+    // هر فایل، همون لحظه‌ی parse شدن (نه داخل یه تابع)، ثابت می‌کنه که
+    // نسخه‌ی درست واقعاً رو مرورگر لود شده — به‌جای این‌که فرض کنیم دیپلوی
+    // درست بوده و بعداً از نبودِ لاگ‌های داخلی گیج بشیم (دقیقاً مشکلی که
+    // چند دور قبل باهاش گیر کردیم).
+    window.__MH_BUILD = '2026-09-19.1';
+    // یه شناسه‌ی کوتاه و تصادفی، یه‌بار در باز شدن صفحه — برای این‌که وقتی
+    // چند نفر هم‌زمان از اپ استفاده می‌کنن، بشه لاگ‌های یه جلسه‌ی واحد رو
+    // از بقیه جدا کرد (قبلاً همه‌چی قاطی هم بود).
+    window.__MH_SID = Math.random().toString(36).slice(2, 8);
+
     window.sendRemoteLog = function(msg) {
       try {
         fetch('/site/client-log', {
@@ -225,6 +237,52 @@
         }).catch(function(){});
       } catch(e){}
     };
+
+    // فرمت یکسان و همیشگی برای همه‌ی رویدادهای مهم:
+    //   [TAG] event key=val key=val ... sid=XXXXXX
+    // یه خط واحد با همه‌ی جزئیات، به‌جای چندتا خط پراکنده و نصفه.
+    window.logEvent = function(tag, event, kv) {
+      var parts = ['[' + tag + ']', event];
+      if (kv) {
+        for (var k in kv) {
+          if (Object.prototype.hasOwnProperty.call(kv, k)) {
+            var v = kv[k];
+            if (v === undefined || v === null || v === '') v = 'none';
+            parts.push(k + '=' + v);
+          }
+        }
+      }
+      parts.push('sid=' + window.__MH_SID);
+      window.sendRemoteLog(parts.join(' '));
+    };
+
+    // برای رویدادهای روتین/پرتکرار (لود موفق، رندر): اگه نتیجه‌ش دقیقاً
+    // مثل دفعه‌ی قبل بود و کمتر از minIntervalMs گذشته، به‌جای فرستادن یه
+    // خط جدید، فقط شمارش می‌کنه — و وقتی بالاخره یه خط جدید فرستاده بشه
+    // (چه به‌خاطر تغییر نتیجه، چه به‌خاطر گذشتن زمان)، تعداد دفعات
+    // سرکوب‌شده رو با repeated=N نشون می‌ده. این دقیقاً همون مشکلیه که حل
+    // می‌کنه: ۱۴ بار loadSignalsOK تو ۴۰ ثانیه، له‌کننده‌ی لاگ‌های مهم‌تر.
+    window.__MH_LAST_LOG = {};
+    window.logEventThrottled = function(tag, event, kv, minIntervalMs) {
+      var key = tag + ':' + event;
+      var kvStr = JSON.stringify(kv || {});
+      var now = Date.now();
+      var last = window.__MH_LAST_LOG[key];
+      var interval = minIntervalMs || 30000;
+
+      if (last && last.kvStr === kvStr && (now - last.time) < interval) {
+        last.count += 1;
+        return;
+      }
+
+      var finalKv = kv || {};
+      if (last && last.count > 1) {
+        finalKv = Object.assign({}, finalKv, { repeated: last.count });
+      }
+      window.__MH_LAST_LOG[key] = { time: now, kvStr: kvStr, count: 1 };
+      window.logEvent(tag, event, finalKv);
+    };
+
     // ⚠️ فیکس: msg/url/line خام می‌تونن به‌خاطر sandboxing وب‌ویوی تلگرام
     // (به‌خصوص تلگرام وب/دسکتاپ که Mini App رو تو iframe لود می‌کنن) به‌صورت
     // «Script error.» و ۰:۰ سانسور بشن — این یه محدودیت امنیتی مرورگره،
@@ -232,8 +290,8 @@
     // پرش می‌کنن حتی وقتی msg سانسور شده؛ اگه بود، stack واقعی رو می‌گیریم.
     window.onerror = function(msg, url, line, col, errorObj) {
       var file = (url || '').split('/').pop();
-      var extra = errorObj && errorObj.stack ? (' | stack=' + String(errorObj.stack).slice(0, 300)) : '';
-      window.sendRemoteLog('JSERR: ' + msg + ' @ ' + file + ':' + line + extra);
+      var stack = errorObj && errorObj.stack ? String(errorObj.stack).slice(0, 300) : '';
+      window.logEvent('JSERR', 'onerror', { msg: msg, file: file, line: line, stack: stack });
     };
     // ⚠️ فیکس: قبلاً reject نشدن یه Promise (مثلاً تو یه تابع async بدون catch)
     // هیچ‌جا لاگ نمی‌شد — window.onerror فقط throw های synchronous رو می‌گیره،
@@ -242,19 +300,21 @@
     window.addEventListener('unhandledrejection', function(event) {
       var reason = event.reason;
       var msg = (reason && reason.message) || String(reason);
-      var stack = reason && reason.stack ? (' | stack=' + String(reason.stack).slice(0, 300)) : '';
-      window.sendRemoteLog('JSERR: UnhandledRejection: ' + msg + stack);
+      var stack = reason && reason.stack ? String(reason.stack).slice(0, 300) : '';
+      window.logEvent('JSERR', 'unhandledrejection', { msg: msg, stack: stack });
     });
+
+    window.logEvent('BOOT', 'index.html loaded', { build: window.__MH_BUILD });
   </script>
 
-  <!-- ارتقای نسخه به v=7.6.1 جهت ابطال کش وب‌ویوی تلگرام -->
-  <script src="/static/js/telegram.js?v=7.6.1"></script>
-  <script src="/static/js/api.js?v=7.6.1"></script>
-  <script src="/static/js/avatars.js?v=7.6.1"></script>
-  <script src="/static/js/pull_refresh.js?v=7.6.1"></script>
-  <script src="/static/js/dossier.js?v=7.6.1"></script>
-  <script src="/static/js/views.js?v=7.6.1"></script>
-  <script src="/static/js/modals.js?v=7.6.1"></script>
-  <script src="/static/js/app.js?v=7.6.1"></script>
+  <!-- ارتقای نسخه به v=7.6.2 جهت ابطال کش وب‌ویوی تلگرام -->
+  <script src="/static/js/telegram.js?v=7.6.2"></script>
+  <script src="/static/js/api.js?v=7.6.2"></script>
+  <script src="/static/js/avatars.js?v=7.6.2"></script>
+  <script src="/static/js/pull_refresh.js?v=7.6.2"></script>
+  <script src="/static/js/dossier.js?v=7.6.2"></script>
+  <script src="/static/js/views.js?v=7.6.2"></script>
+  <script src="/static/js/modals.js?v=7.6.2"></script>
+  <script src="/static/js/app.js?v=7.6.2"></script>
 </body>
 </html>

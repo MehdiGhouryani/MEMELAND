@@ -2,6 +2,35 @@
  * MemeLand API Service & Session Manager (v7.6.0 - Robust Token Sanitization & Direct Array Parser)
  */
 
+// ⚠️ فیکس مقاوم‌سازی: اگه به هر دلیلی اسکریپت inline تو index.html اجرا
+// نشده باشه (کش قدیمی، ترتیب لود عجیب، ...)، این تعریف‌های fallback
+// می‌ذارن که خودِ صدا زدن logEvent/logEventThrottled/sendRemoteLog تو هیچ
+// فایلی throw نکنه — چون این توابع همه‌جای پروژه بدون گارد صدا زده می‌شن؛
+// گارد گذاشتن تک‌تک جاها هم شکننده‌ست، این یه‌جا امن‌ترش می‌کنه.
+window.sendRemoteLog = window.sendRemoteLog || function (msg) {
+  try {
+    fetch('/site/client-log', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: msg })
+    }).catch(function () {});
+  } catch (e) {}
+};
+window.logEvent = window.logEvent || function (tag, event, kv) {
+  var parts = ['[' + tag + ']', event];
+  if (kv) { for (var k in kv) { if (Object.prototype.hasOwnProperty.call(kv, k)) { parts.push(k + '=' + kv[k]); } } }
+  parts.push('sid=' + (window.__MH_SID || '?'));
+  window.sendRemoteLog(parts.join(' '));
+};
+window.logEventThrottled = window.logEventThrottled || function (tag, event, kv) {
+  window.logEvent(tag, event, kv);
+};
+
+// ⚠️ خط اثر انگشت بوت: همین لحظه‌ی parse شدن فایل، نه داخل یه تابع. اگه این
+// خط تو لاگ سرور نبود، یعنی این نسخه از api.js اصلاً رو مرورگر لود نشده
+// (مشکل دیپلوی/کش)، نه یه باگ منطقی داخل کد.
+try {
+  window.logEvent('BOOT', 'api.js loaded', { build: window.__MH_BUILD || '?' });
+} catch (e) {}
+
 // ⚠️ فیکس امنیتی (XSS ذخیره‌شده): تمام دیتای آزادِ کاربر (توضیحات سیگنال، اسم
 // کالر، عنوان مقاله، لینک خرید و ...) قبلاً مستقیم با innerHTML و بدون escape
 // رندر می‌شد. سمت بات این escape از قبل با تابع esc() انجام می‌شد ولی سمت
@@ -28,12 +57,6 @@ function safeUrl(url) {
 
 const API = {
   baseUrl: '/site',
-
-  log(msg) {
-    if (window.sendRemoteLog) {
-      window.sendRemoteLog(`[API] ${msg}`);
-    }
-  },
 
   getToken() {
     const t = localStorage.getItem('mh_session_token') || 
@@ -91,7 +114,7 @@ const API = {
     // امنیت) و آیدی تلگرام از کجا خونده شده. با این، دفعه‌ی بعد که مشکل
     // لاگین پیش بیاد، می‌فهمیم مشکل سمت کلاینته (initData اصلاً خالیه) یا
     // سمت سرور (initData هست ولی رد می‌شه).
-    this.log(`AuthAttempt: hasTg=${Boolean(tg)} initDataLen=${initData.length} tgUserId=${uid || 'none'}`);
+    window.logEvent('AUTH', 'attempt', { hasTg: Boolean(tg), initLen: initData.length, tgUid: uid || 'none' });
 
     const payload = {
       init_data: initData,
@@ -111,20 +134,20 @@ const API = {
         });
         if (resp.ok) {
           authData = await resp.json();
-          this.log(`AuthSuccess: url=${url} uid=${authData.telegram_id || uid} adm=${Boolean(authData.is_admin)}`);
+          window.logEvent('AUTH', 'success', { url: url, uid: authData.telegram_id || uid, adm: Boolean(authData.is_admin) });
           break;
         } else {
           // ⚠️ فیکس: قبلاً این حالت (سرور جواب داد ولی status خطا بود، مثلاً
           // ۴۰۰/۴۰۱) اصلاً لاگ نمی‌شد — یعنی هیچ ردی از این‌که چرا لاگین رد
           // شده باقی نمی‌موند. الان status و متن خطای واقعی سرور ثبت می‌شه.
           const errBody = await resp.text().catch(() => '');
-          this.log(`AuthHTTPFail: url=${url} status=${resp.status} body=${errBody.slice(0, 200)}`);
+          window.logEvent('AUTH', 'httpFail', { url: url, status: resp.status, body: errBody.slice(0, 150) });
         }
       } catch (err) {
         // ⚠️ فیکس: قبلاً هر خطای شبکه/fetch (مثلاً CORS، قطعی اتصال، آدرس
         // اشتباه) کاملاً بی‌صدا نادیده گرفته می‌شد — دقیقاً همون چیزی که
         // باعث می‌شد نتونیم بفهمیم چرا لاگین همیشه شکست می‌خوره.
-        this.log(`AuthFetchErr: url=${url} err=${err.message || err}`);
+        window.logEvent('AUTH', 'fetchErr', { url: url, err: err.message || err });
       }
     }
 
@@ -142,12 +165,13 @@ const API = {
       const resp = await fetch(`${this.baseUrl}/session`, { headers });
       if (resp.status === 401) {
         this.clearToken();
+        window.logEventThrottled('AUTH', 'sessionExpired', {}, 60000);
         return null;
       }
       if (!resp.ok) {
         // ⚠️ فیکس: قبلاً این حالت (نه ۴۰۱، ولی بازم ناموفق — مثلاً ۵۰۰) کاملاً
         // بی‌صدا null برمی‌گردوند.
-        this.log(`GetSessionHTTPFail: status=${resp.status}`);
+        window.logEvent('AUTH', 'sessionHttpFail', { status: resp.status });
         return null;
       }
       const data = await resp.json();
@@ -157,20 +181,21 @@ const API = {
       return data;
     } catch (e) {
       // ⚠️ فیکس: خطای شبکه/fetch اینجا هم قبلاً کاملاً بی‌صدا بود.
-      this.log(`GetSessionErr: ${e.message || e}`);
+      window.logEvent('AUTH', 'sessionErr', { err: e.message || e });
       return null;
     }
   },
 
   async getSignals() {
+    const startMs = Date.now();
     try {
       const resp = await fetch(`${this.baseUrl}/signals?limit=200`, { headers: this.getHeaders() });
       if (!resp.ok) {
-        this.log(`SignalsHTTPFail: status=${resp.status}`);
+        window.logEvent('SIGNALS', 'httpFail', { status: resp.status });
         return [];
       }
       const data = await resp.json();
-      
+
       let list = [];
       if (Array.isArray(data)) {
         list = data;
@@ -178,10 +203,14 @@ const API = {
         list = data.items || data.signals || data.feed || data.data || [];
       }
 
-      this.log(`SignalsFetched: count=${list.length}`);
+      // ⚠️ throttled: این تابع مکرر صدا زده می‌شه (لود اولیه، pull-refresh)؛
+      // اگه نتیجه عوض نشده باشه، خط جدید نمی‌فرسته، فقط شمارش می‌کنه —
+      // دقیقاً همون چیزی که جلوی له‌شدن لاگ‌های مهم زیر ۱۴ بار
+      // loadSignalsOK تو ۴۰ ثانیه رو می‌گیره.
+      window.logEventThrottled('SIGNALS', 'fetch', { status: 'OK', count: list.length, ms: Date.now() - startMs }, 30000);
       return list;
     } catch (e) {
-      this.log(`SignalsCatchErr: ${e.message}`);
+      window.logEvent('SIGNALS', 'fetchErr', { err: e.message || e });
       return [];
     }
   },
@@ -189,8 +218,13 @@ const API = {
   async getLeaderboard() {
     try {
       const resp = await fetch(`${this.baseUrl}/leaderboard?period=week`, { headers: this.getHeaders() });
-      return resp.ok ? await resp.json() : { callers: [], signal_givers: [] };
+      if (!resp.ok) {
+        window.logEvent('LEADERBOARD', 'httpFail', { status: resp.status });
+        return { callers: [], signal_givers: [] };
+      }
+      return await resp.json();
     } catch (e) {
+      window.logEvent('LEADERBOARD', 'fetchErr', { err: e.message || e });
       return { callers: [], signal_givers: [] };
     }
   },
@@ -198,8 +232,13 @@ const API = {
   async getContent(key) {
     try {
       const resp = await fetch(`${this.baseUrl}/content/${key}`, { headers: this.getHeaders() });
-      return resp.ok ? await resp.json() : [];
+      if (!resp.ok) {
+        window.logEvent('CONTENT', 'httpFail', { key: key, status: resp.status });
+        return [];
+      }
+      return await resp.json();
     } catch (e) {
+      window.logEvent('CONTENT', 'fetchErr', { key: key, err: e.message || e });
       return [];
     }
   },

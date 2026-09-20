@@ -2,25 +2,20 @@
  * MemeLand Core Controller (v7.6.0 - Guaranteed Session Sync & Signals Feed)
  */
 
-window.sendRemoteLog = function(msg) {
-  if (!msg) return;
-  try {
-    fetch('/site/client-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msg: String(msg) })
-    }).catch(() => {});
-  } catch (e) {}
-};
+// ⚠️ فیکس مهم: قبلاً این فایل خودش یه sendRemoteLog جدا + دو تا error/
+// unhandledrejection listener جداگانه داشت که رو نسخه‌ی index.html سوار
+// می‌شدن (window.addEventListener اجازه می‌ده چندتا listener هم‌زمان باشن).
+// نتیجه‌ش این بود که یه خطای واحد گاهی ۲ بار جدا لاگ می‌شد (یکی از اینجا،
+// یکی از index.html) — دقیقاً همون الگوی «JSERR: Script error. @ :0» و
+// «... @ app.js:0» تقریباً هم‌زمانی که تو لاگ‌های قبلی دیده شد. رشته‌ی
+// "app.js" اونجا صرفاً fallback هاردکد همین هندلر بود وقتی filename واقعی
+// در دسترس نبود، نه لزوماً محل واقعی خطا. الان همه‌چی از یه جا (index.html،
+// با logEvent/sid یکسان) میاد — اینجا فقط از همون استفاده می‌کنیم.
 
-window.addEventListener('error', function(e) {
-  window.sendRemoteLog(`JSERR: ${e.message} @ ${e.filename || 'app.js'}:${e.lineno}`);
-});
-
-window.addEventListener('unhandledrejection', function(e) {
-  const reason = e.reason ? (e.reason.message || String(e.reason)) : 'Unknown rejection';
-  window.sendRemoteLog(`JSERR: Promise - ${reason}`);
-});
+// ⚠️ خط اثر انگشت بوت (نگاه کن به توضیح مشابه تو api.js).
+try {
+  if (window.logEvent) window.logEvent('BOOT', 'app.js loaded', { build: window.__MH_BUILD || '?' });
+} catch (e) {}
 
 const App = {
   _initialized: false,
@@ -94,6 +89,8 @@ const App = {
 
     if (window.TGBridge && typeof TGBridge.init === 'function') {
       TGBridge.init();
+    } else if (window.logEvent) {
+      window.logEvent('BOOT', 'guardFail', { check: 'TGBridge.init', hasTGBridge: Boolean(window.TGBridge) });
     }
     this.startSplashTicker();
 
@@ -111,12 +108,20 @@ const App = {
       try {
         if (window.API && typeof API.authenticateWebApp === 'function') {
           session = await API.authenticateWebApp();
+        } else {
+          // ⚠️ فیکس مشاهده‌پذیری: قبلاً اگه این شرط رد می‌شد (یعنی api.js
+          // اصلاً لود نشده بود)، هیچ لاگی ثبت نمی‌شد و کل init ساکت جلو
+          // می‌رفت با session=null، دقیقاً همون چیزی که باعث AuthAttempt
+          // نبودن تو لاگ‌های قبلی می‌شد بدون هیچ توضیحی.
+          window.logEvent('BOOT', 'guardFail', { check: 'API.authenticateWebApp', hasAPI: Boolean(window.API) });
         }
         if (!session && window.API && typeof API.getSession === 'function') {
           session = await API.getSession();
+        } else if (!session) {
+          window.logEvent('BOOT', 'guardFail', { check: 'API.getSession', hasAPI: Boolean(window.API) });
         }
       } catch (e) {
-        window.sendRemoteLog(`[APP] AuthNotice: ${e.message || e}`);
+        window.logEvent('APP', 'authNotice', { err: e.message || e });
       }
       this.state.session = session;
 
@@ -132,11 +137,13 @@ const App = {
         } else if (typeof Views.renderCurrent === 'function') {
           Views.renderCurrent();
         }
+      } else {
+        window.logEvent('BOOT', 'guardFail', { check: 'window.Views' });
       }
 
       const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
       const isAdm = Boolean(session?.is_admin || session?.is_super_admin);
-      window.sendRemoteLog(`APP: Ready (sessUid=${session?.telegram_id || 'none'}, tgUid=${tgUid || 'none'}, adm=${isAdm}, sigCount=${this.state.signals.length})`);
+      window.logEvent('APP', 'ready', { sessUid: session?.telegram_id || 'none', tgUid: tgUid || 'none', adm: isAdm, sigCount: this.state.signals.length });
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
@@ -152,9 +159,11 @@ const App = {
             }
           }
         });
+      } else {
+        window.logEvent('BOOT', 'guardFail', { check: 'PullRefresh.init', hasPullRefresh: Boolean(window.PullRefresh) });
       }
     } catch (err) {
-      window.sendRemoteLog(`JSERR: Init ${err.message || err}`);
+      window.logEvent('APP', 'initErr', { err: err.message || err, stack: (err.stack || '').slice(0, 300) });
     } finally {
       clearTimeout(safetyTimer);
       const elapsed = Date.now() - splashStartedAt;
@@ -308,11 +317,14 @@ const App = {
       const countBadge = document.getElementById('activeCountBadge');
       if (countBadge) countBadge.textContent = openCount;
 
-      if (window.sendRemoteLog) {
-        window.sendRemoteLog(`[APP] loadSignalsOK: total=${this.state.signals.length}, open=${openCount}`);
+      // ⚠️ throttled: این تابع با هر pull-refresh دوباره صدا زده می‌شه؛
+      // بدون throttle همون ۱۴ بار تو ۴۰ ثانیه‌ای بود که لاگ‌های مهم‌تر رو
+      // له می‌کرد.
+      if (window.logEventThrottled) {
+        window.logEventThrottled('APP', 'loadSignalsOK', { total: this.state.signals.length, open: openCount }, 30000);
       }
     } catch (e) {
-      if (window.sendRemoteLog) window.sendRemoteLog(`[APP] loadSignalsErr: ${e.message}`);
+      if (window.logEvent) window.logEvent('APP', 'loadSignalsErr', { err: e.message || e });
       this.state.signals = [];
     }
   }

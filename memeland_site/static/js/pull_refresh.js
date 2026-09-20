@@ -112,9 +112,8 @@
           } catch (err) {
             this.textEl.textContent = 'خطا در ارتباط';
             this.textEl.style.color = 'var(--red, #f43f5e)';
-            // Only send error logs to prevent server log inflation
-            if (window.sendRemoteLog) {
-              window.sendRemoteLog('PTR_ERR: ' + (err.message || err));
+            if (window.logEvent) {
+              window.logEvent('PULLREFRESH', 'callbackErr', { err: err.message || err });
             }
           }
 

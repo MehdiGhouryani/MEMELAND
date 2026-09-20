@@ -119,6 +119,7 @@ const Dossier = {
         </div>
       `;
     } catch (e) {
+      if (window.logEvent) window.logEvent('DOSSIER', 'fetchErr', { userId: userId, err: e.message || e });
       body.innerHTML = `
         <div style="text-align:center; padding:36px 20px;">
           <div style="font-size:24px; margin-bottom:8px; color:var(--red);">⚠️</div>

@@ -148,5 +148,5 @@
   };
 
   window.AvatarRenderer = AvatarRenderer;
-  if (window.sendRemoteLog) window.sendRemoteLog('AVATAR: Renderer Ready');
+  if (window.logEvent) window.logEvent('BOOT', 'avatars.js loaded', { build: window.__MH_BUILD || '?' });
 })();
