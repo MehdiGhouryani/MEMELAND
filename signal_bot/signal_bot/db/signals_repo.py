@@ -335,3 +335,72 @@ def get_approved_signal_ids():
     ids = [r[0] for r in c.fetchall()]
     conn.close()
     return ids
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  سینک سایت → ربات
+#
+#  🚨 مشکلی که این بخش حل می‌کنه: سینک تا الان *یک‌طرفه* بود. یه سیگنال که
+#  تو ربات تأیید می‌شد، با site_sync.push_signal_created به سایت می‌رفت. ولی
+#  سیگنالی که از وب‌اپ ثبت می‌شد، هیچ‌وقت به دیتابیس ربات نمی‌رسید — و چون
+#  همه‌ی نماهای ربات (فید عمومی، سیگنال‌های من، لیدربورد) از جدول signals
+#  دیتابیس ربات می‌خونن، اون سیگنال‌ها اصلاً وجود نداشتن.
+#  علائمی که گزارش شد («توی وب‌اپ هست، تو چت نیست» و برعکس) دقیقاً همین بود.
+# ══════════════════════════════════════════════════════════════════════════
+
+def get_by_site_id(site_signal_id):
+    """id سیگنال ربات که از یه سیگنال سایت ساخته شده (یا None)."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id FROM signals WHERE site_signal_id=?", (site_signal_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def insert_from_site(site_signal_id, user_id, coin, direction=None, description="",
+                     photo_file_id="", channel="alt", risk_level="low", created_at=None):
+    """
+    ثبت یه سیگنالِ ساخته‌شده-در-سایت داخل دیتابیس ربات.
+
+    status='approved' چون این سیگنال از قبل از مسیر مجاز وب‌اپ (با هویت
+    اثبات‌شده و چک سهمیه) رد شده — دوباره فرستادنش به صف تأیید، هم تکراریه
+    هم باعث می‌شه تا تأیید دستی، تو ربات نامرئی بمونه.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""INSERT INTO signals
+        (user_id, coin, direction, description, signal_type, photo_file_id,
+         channel, risk_level, status, result, points, site_signal_id, created_at)
+        VALUES (?,?,?,?,'full',?,?,?,'approved','open',0,?,?)""",
+        (user_id, coin, direction, description or "", photo_file_id or "",
+         channel or "alt", risk_level or "low", site_signal_id,
+         created_at or datetime.now().isoformat()))
+    signal_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return signal_id
+
+
+def link_site_id(bot_signal_id, site_signal_id):
+    """وصل کردن یه سیگنال ربات به ردیف متناظرش تو سایت (برای backfill)."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE signals SET site_signal_id=? WHERE id=?", (site_signal_id, bot_signal_id))
+    conn.commit()
+    conn.close()
+
+
+def get_sync_snapshot():
+    """
+    (approved_ids, site_linked_ids) — برای گزارش و آشتی‌دادن دو دیتابیس،
+    با یک بار باز کردن اتصال به‌جای N بار.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id FROM signals WHERE status='approved'")
+    approved = [r[0] for r in c.fetchall()]
+    c.execute("SELECT site_signal_id FROM signals WHERE site_signal_id IS NOT NULL")
+    linked = {r[0] for r in c.fetchall()}
+    conn.close()
+    return approved, linked

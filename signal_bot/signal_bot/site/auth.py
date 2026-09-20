@@ -208,91 +208,319 @@ def get_user_role_and_quota(telegram_id: int, elevate: bool = True) -> Dict[str,
     }
 
 
-def get_staff_list() -> List[Dict[str, Any]]:
+# نقش‌هایی که «کادر» محسوب می‌شن (دسترسی مدیریتی) در برابر نقش‌های
+# «تریدر ویژه» (فقط سقف سهمیه‌ی بالاتر). وب‌اپ هر دو دسته رو تو همون مودال
+# نشون می‌ده، با تب‌های جدا.
+_STAFF_ROLES = ("admin", "vip_helper")
+_TRADER_ROLES = ("og", "alpha", "guardian", "explorer")
+
+
+def _resolve_identity(telegram_id: int):
     """
-    برگرداندن لیست اعضای کادر به‌همراه مشخصات کامل (نام و نام کاربری) با جوین جدول sessions
+    نام نمایشی و یوزرنیم یه کاربر، از بهترین منبع موجود.
+
+    🚨 چرا لازم شد: get_staff_list قبلاً فقط به جدول sessions دیتابیس *سایت*
+    جوین می‌زد. یعنی اسم فقط برای کسی پیدا می‌شد که حداقل یک‌بار وب‌اپ رو باز
+    کرده بود. برای ادمینی که فقط از داخل ربات کار می‌کنه، همیشه «کاربر
+    123456» نشون داده می‌شد. ترتیب منابع: جدول users ربات (معتبرترین، چون
+    تلگرام خودش پرش می‌کنه) ← user_profiles سایت ← sessions سایت.
     """
+    name = username = None
+    try:
+        from signal_bot.db import users_repo
+        row = users_repo.find_by_id(telegram_id)
+        if row:
+            _, full_name, uname, _, _, _ = row
+            name, username = full_name or None, uname or None
+    except Exception as e:
+        logger.warning(f"IdentityBotErr: uid={telegram_id} err={e}")
+
+    if name and username:
+        return name, username
+
     conn = get_db()
-    staff_rows = []
+    try:
+        c = conn.cursor()
+        if not name:
+            c.execute("SELECT display_name FROM user_profiles WHERE telegram_id=?", (telegram_id,))
+            r = c.fetchone()
+            if r and r[0]:
+                name = r[0]
+        if not name or not username:
+            c.execute(
+                "SELECT first_name, username FROM sessions WHERE telegram_id=? "
+                "ORDER BY created_at DESC LIMIT 1", (telegram_id,)
+            )
+            r = c.fetchone()
+            if r:
+                name = name or r[0]
+                username = username or r[1]
+    except Exception as e:
+        logger.warning(f"IdentitySiteErr: uid={telegram_id} err={e}")
+    finally:
+        conn.close()
+
+    return name, username
+
+
+def _staff_rows_from(conn_factory, label):
+    out = {}
+    try:
+        conn = conn_factory()
+    except Exception:
+        return out
     try:
         c = conn.cursor()
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
-        if c.fetchone():
-            query = """
-                SELECT 
-                    s.user_id, 
-                    s.role, 
-                    s.added_at,
-                    MAX(p.first_name) as first_name,
-                    MAX(p.username) as username
-                FROM staff s
-                LEFT JOIN sessions p ON s.user_id = p.telegram_id
-                GROUP BY s.user_id
-                ORDER BY s.added_at DESC
-            """
-            c.execute(query)
-            for r in c.fetchall():
-                uid, role, added_at, fname, uname = r
-                
-                display_name = fname if fname else f"کاربر {uid}"
-                telegram_handle = f"@{uname}" if uname else f"ID: {uid}"
-
-                staff_rows.append({
-                    "user_id": uid,
-                    "role": role,
-                    "added_at": added_at,
-                    "is_super": _is_super_admin(uid),
-                    "first_name": display_name,
-                    "username": telegram_handle
-                })
+        if not c.fetchone():
+            return out
+        c.execute("SELECT user_id, role, added_at FROM staff")
+        for uid, role, added_at in c.fetchall():
+            out[int(uid)] = {"role": role or "vip_helper", "added_at": added_at, "src": label}
+    except Exception as e:
+        logger.warning(f"StaffListErr: db={label} err={e}")
     finally:
-        conn.close()
-    return staff_rows
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return out
+
+
+def _trader_rows_from_bot():
+    """کاربرانی که تو ربات نقش تریدرِ ارتقایافته گرفتن (users.role)."""
+    out = {}
+    try:
+        from signal_bot.db.connection import get_db as get_bot_db
+    except Exception:
+        return out
+    conn = get_bot_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not c.fetchone():
+            return out
+        placeholders = ",".join("?" * len(_TRADER_ROLES))
+        c.execute(f"SELECT user_id, role FROM users WHERE role IN ({placeholders})", _TRADER_ROLES)
+        for uid, role in c.fetchall():
+            out[int(uid)] = {"role": role, "added_at": None, "src": "bot_users"}
+    except Exception as e:
+        logger.warning(f"TraderListErr: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return out
+
+
+def get_staff_list() -> List[Dict[str, Any]]:
+    """
+    فهرست یکپارچه‌ی کادر و نقش‌های فعال.
+
+    🚨 چرا این بخش تو وب‌اپ کاملاً خالی بود — سه دلیل هم‌زمان:
+      ۱. سوپرادمین‌ها (ADMIN_IDS از .env) توی *هیچ* جدولی ردیف ندارن، پس
+         هیچ‌وقت لیست نمی‌شدن. برای پروژه‌ای که تنها ادمینش از .env میاد،
+         یعنی لیست همیشه خالی.
+      ۲. کادری که از داخل ربات اضافه می‌شد (staff_repo → signals.db) خونده
+         نمی‌شد؛ فقط جدول staff دیتابیس سایت.
+      ۳. نقش‌های تریدر (og/alpha/guardian/explorer) اصلاً تو جدول staff
+         نیستن — تو ستون users.role دیتابیس *ربات*‌ان. پس تب «تریدرهای
+         ویژه» ذاتاً نمی‌تونست چیزی نشون بده.
+    الان هر چهار منبع با هم ادغام می‌شن.
+    """
+    from signal_bot.config import settings
+
+    merged: Dict[int, Dict[str, Any]] = {}
+
+    # کم‌اولویت‌ترین اول، تا منابع مهم‌تر روش بنویسن.
+    merged.update(_trader_rows_from_bot())
+    try:
+        from signal_bot.db.connection import get_db as get_bot_db
+        merged.update(_staff_rows_from(get_bot_db, "bot"))
+    except Exception:
+        pass
+    merged.update(_staff_rows_from(get_db, "site"))
+
+    # سوپرادمین‌ها همیشه، و همیشه با بالاترین اولویت.
+    for raw in getattr(settings, "ADMIN_IDS", []):
+        try:
+            merged[int(raw)] = {"role": "admin", "added_at": None, "src": "env"}
+        except (TypeError, ValueError):
+            continue
+
+    rows = []
+    for uid, info in merged.items():
+        name, username = _resolve_identity(uid)
+        rows.append({
+            "user_id": uid,
+            "role": info["role"],
+            "added_at": info["added_at"],
+            "is_super": _is_super_admin(uid),
+            "source": info["src"],
+            "first_name": name or f"کاربر {uid}",
+            "username": f"@{username}" if username else f"ID: {uid}",
+        })
+
+    # سوپرادمین‌ها اول، بعد ادمین‌ها، بعد دستیارها، بعد تریدرها.
+    order = {"admin": 0, "vip_helper": 1, "og": 2, "alpha": 3, "guardian": 4, "explorer": 5}
+    rows.sort(key=lambda r: (not r["is_super"], order.get(r["role"], 9), r["user_id"]))
+    logger.info(f"StaffList: total={len(rows)} " + " ".join(
+        f"{k}={sum(1 for r in rows if r['role'] == k)}" for k in ("admin", "vip_helper") ) +
+        f" traders={sum(1 for r in rows if r['role'] in _TRADER_ROLES)}")
+    return rows
+
+
+def _write_bot_user_role(user_id: int, role: str) -> bool:
+    """نوشتن users.role در دیتابیس *ربات* (تنها جایی که واقعاً خونده می‌شه)."""
+    try:
+        from signal_bot.db.connection import get_db as get_bot_db
+    except Exception:
+        return False
+    conn = get_bot_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not c.fetchone():
+            return False
+        c.execute("SELECT 1 FROM users WHERE user_id=?", (user_id,))
+        if c.fetchone():
+            c.execute("UPDATE users SET role=? WHERE user_id=?", (role, user_id))
+        else:
+            # کاربری که هنوز با ربات تعامل نکرده. ردیف حداقلی می‌سازیم تا
+            # نقشش گم نشه و بعداً که /start بزنه، INSERT OR IGNORE بی‌خطر رد شه.
+            c.execute(
+                "INSERT INTO users (user_id, username, full_name, joined_at, role) VALUES (?,?,?,?,?)",
+                (user_id, "", f"User_{user_id}", _utcnow().isoformat(), role),
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"BotRoleWriteErr: uid={user_id} role={role} err={e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _write_staff_row(conn_factory, user_id: int, role: str) -> bool:
+    try:
+        conn = conn_factory()
+    except Exception:
+        return False
+    try:
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS staff (
+            user_id INTEGER PRIMARY KEY, role TEXT NOT NULL, added_at TEXT NOT NULL)""")
+        c.execute("""INSERT INTO staff (user_id, role, added_at) VALUES (?, ?, ?)
+                     ON CONFLICT(user_id) DO UPDATE SET role=excluded.role""",
+                  (user_id, role, _utcnow().isoformat()))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"StaffWriteErr: uid={user_id} err={e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _delete_staff_row(conn_factory, user_id: int) -> int:
+    try:
+        conn = conn_factory()
+    except Exception:
+        return 0
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
+        if not c.fetchone():
+            return 0
+        c.execute("DELETE FROM staff WHERE user_id=?", (user_id,))
+        conn.commit()
+        return c.rowcount
+    except Exception as e:
+        logger.warning(f"StaffDelErr: uid={user_id} err={e}")
+        return 0
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def add_or_update_staff(user_id: int, role: str) -> bool:
-    user_id = int(user_id)
-    conn = get_db()
-    try:
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS staff (
-                user_id INTEGER PRIMARY KEY,
-                role TEXT NOT NULL,
-                added_at TEXT NOT NULL
-            )
-        """)
-        c.execute("""
-            INSERT INTO staff (user_id, role, added_at) VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET role=excluded.role
-        """, (user_id, role, _utcnow().isoformat()))
+    """
+    اعطای نقش — با مسیردهی به دیتابیس درست بر اساس نوع نقش.
 
-        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if c.fetchone():
-            c.execute("UPDATE users SET role=? WHERE user_id=?", (role, user_id))
-        conn.commit()
-        logger.info(f"StaffSet: uid={user_id} role={role}")
-        return True
-    except Exception as e:
-        logger.error(f"StaffSetErr: uid={user_id} err={e}")
-        return False
-    finally:
-        conn.close()
+    🚨 باگ قبلی: این تابع همیشه هم توی staff دیتابیس *سایت* می‌نوشت، هم
+    `UPDATE users SET role=?` روی همون دیتابیس می‌زد. ولی جدول users فقط
+    توی دیتابیس *ربات* وجود داره، پس اون UPDATE بی‌صدا هیچ کاری نمی‌کرد و
+    نقش‌های تریدر (og/alpha/guardian/explorer) عملاً هرگز ذخیره نمی‌شدن.
+    به‌علاوه چون فقط دیتابیس سایت نوشته می‌شد، خودِ ربات هیچ‌وقت از ادمین
+    جدید خبردار نمی‌شد.
+    الان:
+      • نقش کادری (admin / vip_helper) → جدول staff هر دو دیتابیس
+      • نقش تریدر                        → users.role دیتابیس ربات، و ردیف
+                                           staff حذف می‌شه (تنزل درجه)
+    """
+    user_id = int(user_id)
+    role = str(role or "").strip()
+
+    if role in _STAFF_ROLES:
+        ok_site = _write_staff_row(get_db, user_id, role)
+        ok_bot = False
+        try:
+            from signal_bot.db.connection import get_db as get_bot_db
+            ok_bot = _write_staff_row(get_bot_db, user_id, role)
+        except Exception:
+            pass
+        _upsert_profile(user_id, role=role)
+        logger.info(f"StaffSet: uid={user_id} role={role} site={ok_site} bot={ok_bot}")
+        return ok_site or ok_bot
+
+    if role in _TRADER_ROLES or role in [k for k, _ in getattr(settings, "ROLES", [])]:
+        # تنزل از کادر به تریدر: ردیف staff باید برداشته بشه، وگرنه کاربر
+        # همچنان ادمین می‌مونه در حالی که UI نقش تریدر نشون می‌ده.
+        _delete_staff_row(get_db, user_id)
+        try:
+            from signal_bot.db.connection import get_db as get_bot_db
+            _delete_staff_row(get_bot_db, user_id)
+        except Exception:
+            pass
+        ok = _write_bot_user_role(user_id, role)
+        _upsert_profile(user_id, role=role)
+        logger.info(f"RoleSet: uid={user_id} role={role} botUsers={ok}")
+        return ok
+
+    logger.warning(f"StaffSetReject: uid={user_id} role={role!r} نقش ناشناخته")
+    return False
 
 
 def remove_staff(user_id: int) -> bool:
+    """
+    سلب دسترسی. سوپرادمین‌های .env قابل حذف نیستن (ردیف دیتابیسی ندارن که
+    حذف بشه — تنها راه، ویرایش فایل .env و ری‌استارته).
+    """
     user_id = int(user_id)
     if _is_super_admin(user_id):
+        logger.info(f"StaffDelReject: uid={user_id} سوپرادمین .env است")
         return False
-    conn = get_db()
+
+    removed = _delete_staff_row(get_db, user_id)
     try:
-        c = conn.cursor()
-        c.execute("DELETE FROM staff WHERE user_id=?", (user_id,))
-        conn.commit()
-        logger.info(f"StaffDel: uid={user_id}")
-        return c.rowcount > 0
-    finally:
-        conn.close()
+        from signal_bot.db.connection import get_db as get_bot_db
+        removed += _delete_staff_row(get_bot_db, user_id)
+    except Exception:
+        pass
+
+    default_role = getattr(settings, "DEFAULT_ROLE", "rookie")
+    reset = _write_bot_user_role(user_id, default_role)
+    logger.info(f"StaffDel: uid={user_id} rows={removed} roleReset={reset}")
+    return removed > 0 or reset
 
 
 def _extract_display_name(first_name: Optional[str], username: Optional[str], telegram_id: int) -> str:

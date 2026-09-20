@@ -20,6 +20,61 @@ _EDITABLE_FIELDS = [
 ]
 
 
+def _iso_utc(value):
+    """
+    🚨 فیکس منطقه‌ی زمانی در خروجی API:
+    created_at با datetime.utcnow().isoformat() ذخیره می‌شه، یعنی یه رشته‌ی
+    «۲۰۲۶-۰۹-۲۰T۱۷:۳۵:۰۰» بدون هیچ نشانگر منطقه‌ی زمانی. طبق استاندارد
+    ECMAScript، `new Date(...)` روی یه رشته‌ی date-time بدونِ offset، اون رو
+    به‌عنوان **ساعت محلی** تفسیر می‌کنه — نه UTC. پس روی دستگاه کاربر ایرانی
+    (+۳:۳۰) هر سیگنال ۳ ساعت‌ونیم قدیمی‌تر از واقعیت دیده می‌شد، که فیلتر
+    «امروز/این هفته» رو در لبه‌ها اشتباه می‌کرد.
+    در خودِ دیتابیس چیزی عوض نمی‌شه (تا مقایسه‌های رشته‌ای موجود نشکنن)؛
+    فقط موقع تحویل به کلاینت، Z اضافه می‌شه.
+    """
+    if not value:
+        return value
+    text = str(value)
+    if text.endswith("Z") or "+" in text[10:] or text[10:].count("-") > 0:
+        return text
+    return text + "Z"
+
+
+def set_bot_signal_id(site_signal_id: int, bot_signal_id: int):
+    """لینک معکوس سایت → ربات (برای سیگنال‌هایی که تو وب‌اپ ساخته شدن)."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE signals SET bot_signal_id=?, source='site' WHERE id=?",
+              (bot_signal_id, site_signal_id))
+    conn.commit()
+    conn.close()
+
+
+def get_unlinked_rows():
+    """
+    سیگنال‌های سایت که هنوز به هیچ سیگنال رباتی لینک نشدن — ورودیِ backfill.
+    (bot_signal_id NULL یعنی نه از ربات اومده، نه به ربات رفته.)
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""SELECT id, owner_telegram_id, coin, direction, note, channel,
+                        risk_level, created_at, caller_name, result, outcome_status
+                 FROM signals WHERE bot_signal_id IS NULL AND owner_telegram_id IS NOT NULL
+                 ORDER BY id""")
+    cols = [d[0] for d in c.description]
+    rows = [dict(zip(cols, r)) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def count_all() -> int:
+    conn = get_db()
+    c = conn.cursor()
+    n = c.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
+    conn.close()
+    return n
+
+
 def get_id_by_bot_signal_id(bot_signal_id: int):
     """پیدا کردن id سایتِ سیگنالی که از بات سینک شده (bot_signal_id غیر-null و
     یکتاست، طبق UNIQUE INDEX تو db.py) — لازم برای push_signal_result که فقط
@@ -255,6 +310,7 @@ def get_feed(limit: int = 200, offset: int = 0, status: str = None, channel: str
             (row["id"],),
         )
         row["history"] = [{"result": r[0], "outcome_status": r[1], "changed_at": r[2]} for r in c.fetchall()]
+        row["created_at"] = _iso_utc(row.get("created_at"))
         if row["tier"] == "vip" and not _viewer_has_vip_access(viewer, row["owner_telegram_id"]):
             for f in _VIP_GATED_FIELDS:
                 row[f] = None

@@ -550,11 +550,30 @@ async def handle_signals_create(request: web.Request) -> web.Response:
 
     try:
         sid = signals.create_signal(**payload)
-        logger.info(f"SigNew: sid={sid} coin={payload.get('coin')} img={bool(payload.get('before_img'))} by={payload['owner_telegram_id']}")
     except TypeError as e:
         return _json_error(400, str(e))
 
-    return web.json_response({"id": sid})
+    # 🚨 سینک دوطرفه: بدون این، سیگنالِ ثبت‌شده در وب‌اپ هیچ‌وقت وارد
+    # دیتابیس ربات نمی‌شد و در بخش چت اصلاً دیده نمی‌شد. مقصر اصلی یکی از
+    # دو علامتی بود که گزارش شد.
+    from signal_bot.services import site_sync
+    synced = site_sync.push_signal_from_site(
+        site_signal_id=sid,
+        owner_telegram_id=payload["owner_telegram_id"],
+        coin=payload.get("coin"),
+        direction=payload.get("direction"),
+        note=payload.get("note", ""),
+        channel=payload.get("channel", "alt"),
+        risk_level=body.get("risk_level", "low"),
+        created_at=payload.get("created_at"),
+        display_name=session.get("display_name"),
+        username=session.get("username"),
+    )
+    logger.info(
+        f"SigNew: sid={sid} coin={payload.get('coin')} img={bool(payload.get('before_img'))} "
+        f"by={payload['owner_telegram_id']} botSync={'ok' if synced else 'FAIL'}"
+    )
+    return web.json_response({"id": sid, "bot_synced": synced})
 
 
 async def handle_signals_edit(request: web.Request) -> web.Response:
@@ -616,9 +635,19 @@ async def handle_signals_result(request: web.Request) -> web.Response:
         result_text = body.get("result", "")
         status = body.get("outcome_status", "open")
         ok = signals.set_result(signal_id, result_text, status)
-        logger.info(f"SigResult: sid={signal_id} res={result_text} stat={status}")
     except (ValueError, AttributeError) as e:
         return _json_error(400, str(e))
+
+    # نتیجه هم باید به ربات برسه، وگرنه امتیاز/استریک/لیدربورد ربات از
+    # وب‌اپ عقب می‌مونه و دو طرف واگرا می‌شن.
+    bot_synced = False
+    if ok:
+        from signal_bot.services import site_sync
+        bot_synced = site_sync.push_result_from_site(signal_id, result_text, status)
+    logger.info(
+        f"SigResult: sid={signal_id} res={result_text} stat={status} "
+        f"botSync={'ok' if bot_synced else 'skip'}"
+    )
 
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")
 
@@ -630,6 +659,8 @@ async def handle_signals_delete(request: web.Request) -> web.Response:
     signal_id = _path_int(request, "id")
     if signal_id is None:
         return _json_error(400, "شناسه سیگنال نامعتبر است")
+    from signal_bot.services import site_sync
+    site_sync.delete_from_site(signal_id)   # قبل از حذف، تا لینک هنوز موجود باشه
     ok = signals.delete_signal(signal_id)
     logger.info(f"SigDel: sid={signal_id}")
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")

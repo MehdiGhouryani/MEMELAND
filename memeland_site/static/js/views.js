@@ -57,20 +57,28 @@ const Views = {
     const allSignals = App.state.signals || [];
     const f = App.state.signalFilters || { sort: 'newest', timeRange: 'all', channel: 'all', risk: 'all' };
 
+    // ⚠️ شمارش دلیلِ حذف. چرا لازم شد: تو لاگ سرور خطی مثل
+    //   [VIEW] render tab=active total=8 filtered=2
+    // دیده شد — یعنی ۶ سیگنال جایی حذف شدن، ولی هیچ راهی نبود بفهمیم کدوم
+    // فیلتر مقصره. با شمارنده‌ی جدا برای هر شرط، همون یه خط لاگ جواب رو
+    // مستقیم می‌ده به‌جای اینکه فقط بگه «چیزی نیست».
+    const drop = { status: 0, search: 0, time: 0, channel: 0, risk: 0 };
+
     let list = allSignals.filter(s => {
       const rawStatus = String(s.outcome_status || s.status || 'open').toLowerCase();
       const matchStatus = isClosed
         ? (rawStatus === 'win' || rawStatus === 'loss' || rawStatus === 'closed')
         : (rawStatus === 'open' || rawStatus === 'active');
+      if (!matchStatus) { drop.status++; return false; }
 
       const coinName = String(s.coin || s.symbol || s.name || '').toLowerCase();
-      const matchSearch = !App.state.searchQuery || coinName.includes(App.state.searchQuery.toLowerCase());
-
-      const matchTime = this._isWithinTimeRange(s.created_at, f.timeRange);
-      const matchChannel = f.channel === 'all' || (s.channel || 'alt') === f.channel;
-      const matchRisk = f.risk === 'all' || (s.risk_level || 'low') === f.risk;
-
-      return matchStatus && matchSearch && matchTime && matchChannel && matchRisk;
+      if (App.state.searchQuery && !coinName.includes(App.state.searchQuery.toLowerCase())) {
+        drop.search++; return false;
+      }
+      if (!this._isWithinTimeRange(s.created_at, f.timeRange)) { drop.time++; return false; }
+      if (f.channel !== 'all' && (s.channel || 'alt') !== f.channel) { drop.channel++; return false; }
+      if (f.risk !== 'all' && (s.risk_level || 'low') !== f.risk) { drop.risk++; return false; }
+      return true;
     });
 
     list = list.slice().sort((a, b) => {
@@ -79,21 +87,45 @@ const Views = {
       return f.sort === 'oldest' ? ta - tb : tb - ta;
     });
 
-    if (window.logEventThrottled) {
-      window.logEventThrottled('VIEW', 'render', { tab: App.state.signalSubTab, total: allSignals.length, filtered: list.length }, 30000);
+    const hiddenByFilters = drop.time + drop.channel + drop.risk;
+    if (window.MHLog) {
+      MHLog.throttled('VIEW', 'render', {
+        tab: App.state.signalSubTab,
+        total: allSignals.length,
+        kept: list.length,
+        dStatus: drop.status, dSearch: drop.search,
+        dTime: drop.time, dChannel: drop.channel, dRisk: drop.risk,
+        filters: `${f.sort}/${f.timeRange}/${f.channel}/${f.risk}`
+      }, 30000, hiddenByFilters > 0 ? 'W' : 'I');
     }
 
+    // ⚠️ فیکس UX که مستقیم با همون باگ مرتبطه: فیلترها توی localStorage
+    // ذخیره می‌شن و بین باز شدن‌های اپ باقی می‌مونن. اگه کاربر یه‌بار
+    // «امروز» رو انتخاب کرده باشه، هفته‌ی بعد سیگنال‌ها ناپدید می‌شن و
+    // پیام «سیگنال فعالی موجود نیست» گمراه‌کننده‌ست — سیگنال هست، فیلتر
+    // پنهانش کرده. حالا صریح گفته می‌شه، با دکمه‌ی پاک‌کردن.
+    const filterNotice = hiddenByFilters > 0 ? `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+                  background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.25);
+                  border-radius:var(--radius-sm); padding:9px 12px; margin-bottom:10px; font-size:11.5px;">
+        <span style="color:var(--text-muted);">🔎 ${hiddenByFilters} سیگنال با فیلترهای فعلی پنهان شده</span>
+        <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:10.5px;"
+                onclick="Views.clearAllFilters()">پاک‌کردن فیلترها</button>
+      </div>` : '';
+
     if (list.length === 0) {
-      listEl.innerHTML = `
+      listEl.innerHTML = filterNotice + `
         <div style="text-align:center; padding:44px 20px; color:var(--text-muted); font-size:12px;">
           <div style="font-size:28px; margin-bottom:8px; opacity:0.6;">⚡</div>
-          سیگنال فعالی در این بخش موجود نیست.
+          ${hiddenByFilters > 0
+            ? 'هیچ سیگنالی با این فیلترها مطابقت نداشت.'
+            : 'سیگنال فعالی در این بخش موجود نیست.'}
         </div>
       `;
       return;
     }
 
-    listEl.innerHTML = list.map(s => {
+    listEl.innerHTML = filterNotice + list.map(s => {
       const statusKey = String(s.outcome_status || s.status || 'open').toLowerCase();
       const roiClass = statusKey === 'win' ? 'roi-win' : (statusKey === 'loss' ? 'roi-loss' : 'roi-open');
       const roiText = escapeHtml(s.result ? s.result : 'در حال معامله');

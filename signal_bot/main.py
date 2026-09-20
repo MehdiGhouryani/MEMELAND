@@ -162,6 +162,13 @@ async def handle_diag_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     js_files = sorted(os.listdir(js_dir)) if os.path.isdir(js_dir) else []
     logger_deployed = "logger.js" in js_files
 
+    from signal_bot.services import site_sync
+    sync = site_sync.sync_health()
+    staff = site_auth.get_staff_list()
+    n_admin = sum(1 for r in staff if r["role"] == "admin")
+    n_helper = sum(1 for r in staff if r["role"] == "vip_helper")
+    n_trader = len(staff) - n_admin - n_helper
+
     lines = [
         "🩺 <b>وضعیت سیستم</b>",
         "",
@@ -182,6 +189,17 @@ async def handle_diag_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• logger.js دیپلوی شده: {ok(logger_deployed)}",
         f"• SITE_URL: <code>{settings.SITE_URL or '—'}</code>",
         "",
+        "<b>سینک ربات ↔ سایت</b>",
+        f"• وضعیت: {'✅ همگام' if sync.get('in_sync') else '⚠️ ناهمگام'}",
+        f"• سیگنال ربات (approved): {sync.get('bot_approved', '?')}",
+        f"• سیگنال سایت: {sync.get('site_total', '?')}",
+        f"• در ربات هست/در سایت نیست: {sync.get('bot_missing_in_site', '?')}",
+        f"• در سایت هست/در ربات نیست: {sync.get('site_missing_in_bot', '?')}",
+        ("" if sync.get("in_sync") else "• ترمیم: <code>/sync_all</code>"),
+        "",
+        "<b>کادر و نقش‌ها</b>",
+        f"• مدیر: {n_admin} | دستیار: {n_helper} | تریدر ویژه: {n_trader}",
+        "",
         "<b>لاگ</b>",
         f"• حجم: {stats.get('size_kb', 0)} کیلوبایت",
         f"• خطا: {stats.get('errors', 0)} | هشدار: {stats.get('warnings', 0)}",
@@ -189,6 +207,61 @@ async def handle_diag_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "<i>برای جزئیات: /logs err 40</i>",
     ]
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def handle_sync_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /sync_all        →  فقط گزارش می‌دهد، چیزی نمی‌نویسد
+    /sync_all apply  →  واقعاً هر دو جهت را همگام می‌کند
+
+    چرا لازم است: سینک لحظه‌ای فقط سیگنال‌های *جدید* را درست می‌کند. هرچه
+    پیش از این نسخه ثبت شده، همچنان فقط در یک طرف وجود دارد — همان علامتی
+    که دیده شد: «سیگنال‌های قبلی فقط در چت دیده می‌شوند».
+    """
+    user_id = update.effective_user.id
+    if not site_auth._is_admin(user_id):
+        return
+
+    from signal_bot.services import site_sync
+
+    apply = bool(context.args) and context.args[0].lower() in ("apply", "yes", "اعمال")
+    msg = await update.message.reply_text(
+        "⏳ در حال بررسی…" if apply else "⏳ در حال شمارش (بدون تغییر)…"
+    )
+
+    try:
+        st = await site_sync.reconcile(dry_run=not apply)
+    except Exception as e:
+        await msg.edit_text(f"❌ خطا: {e}")
+        return
+
+    if not apply:
+        total = st["bot_to_site"] + st["site_to_bot"]
+        body = (
+            f"🔍 <b>گزارش سینک (بدون تغییر)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"سیگنال‌های ربات: <b>{st['bot_total']}</b>\n"
+            f"سیگنال‌های سایت: <b>{st['site_total']}</b>\n\n"
+            f"در ربات هست، در سایت نیست: <b>{st['bot_to_site']}</b>\n"
+            f"در سایت هست، در ربات نیست: <b>{st['site_to_bot']}</b>\n"
+            f"از قبل همگام: {st['already']}\n"
+        )
+        body += ("\n✅ همه‌چیز همگام است." if total == 0
+                 else f"\nبرای همگام‌سازی این {total} مورد:\n<code>/sync_all apply</code>")
+    else:
+        body = (
+            f"✅ <b>همگام‌سازی انجام شد</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"ربات ← سایت: <b>{st['bot_to_site']}</b>\n"
+            f"سایت ← ربات: <b>{st['site_to_bot']}</b>\n"
+            f"از قبل همگام: {st['already']}\n"
+        )
+        failed = st["bot_failed"] + st["site_failed"]
+        if failed:
+            body += f"\n⚠️ ناموفق: <b>{failed}</b> — جزئیات: <code>/logs err 30</code>"
+        body += "\n\n<i>توجه: تصویرِ سیگنال‌های قدیمی منتقل نمی‌شود (فقط متن و متادیتا).</i>"
+
+    await msg.edit_text(body, parse_mode=ParseMode.HTML)
 
 
 async def _purge_sessions_job(context: ContextTypes.DEFAULT_TYPE):
@@ -227,6 +300,7 @@ def main():
     app.add_handler(CommandHandler("sync_report", admin.cmd_sync_report))
     app.add_handler(CommandHandler(["logs", "syslog"], handle_logs_command))
     app.add_handler(CommandHandler("diag", handle_diag_command))
+    app.add_handler(CommandHandler("sync_all", handle_sync_all_command))
 
     # ── هندلرهای کال‌بک (Callbacks) ──────────────────────
     app.add_handler(CallbackQueryHandler(signals.direction_callback, pattern="^dir_"))

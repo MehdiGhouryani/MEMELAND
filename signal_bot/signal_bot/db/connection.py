@@ -145,6 +145,12 @@ def init_db():
         ("signals", "result_set_by",   "INTEGER"),
         ("signals", "channel",         "TEXT DEFAULT 'alt'"),
         ("signals", "risk_level",      "TEXT DEFAULT 'low'"),
+        # 🚨 سینک دوطرفه: site.signals از قبل ستون bot_signal_id داشت
+        # (سایت ← بات)، ولی جهت معکوس هیچ لینکی نداشت. بدون این ستون،
+        # سیگنالی که از وب‌اپ ثبت می‌شه هیچ‌وقت نمی‌تونه به ردیف متناظرش تو
+        # ربات وصل بشه — و دقیقاً به همین دلیل بود که سیگنال‌های وب‌اپ تو
+        # بخش چت دیده نمی‌شدن و برعکس.
+        ("signals", "site_signal_id",  "INTEGER"),
         ("prize_pool", "invoice_id",   "TEXT"),
         ("prize_pool", "invoice_url",  "TEXT"),
         ("prize_pool", "payment_id",   "TEXT"),
@@ -166,6 +172,7 @@ def init_db():
         ("idx_signals_user_status",    "signals",  "(user_id, status)"),
         ("idx_signals_status_result",  "signals",  "(status, result)"),
         ("idx_signals_created_at",     "signals",  "(created_at)"),
+        ("idx_signals_site_id",        "signals",  "(site_signal_id)"),
         ("idx_prize_pool_order",       "prize_pool", "(order_id)"),
         ("idx_caller_donations_order", "caller_donations", "(order_id)"),
         ("idx_rewards_user",           "rewards",  "(user_id)"),
