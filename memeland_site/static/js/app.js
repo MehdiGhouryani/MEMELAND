@@ -14,7 +14,7 @@
 
 // ⚠️ خط اثر انگشت بوت (نگاه کن به توضیح مشابه تو api.js).
 try {
-  if (window.logEvent) window.logEvent('BOOT', 'app.js loaded', { build: window.__MH_BUILD || '?' });
+  if (window.logEvent) window.logEvent('BOOT', 'app.js', { build: window.__MH_BUILD || '?' });
 } catch (e) {}
 
 const App = {
@@ -81,16 +81,34 @@ const App = {
     if (dot) dot.style.display = (this.state.signalFilters.risk === 'all') ? 'none' : 'block';
   },
 
+  // یه خط واحد که وضعیت لود همه‌ی ماژول‌ها رو نشون می‌ده. اگه هر کدوم ۰
+  // بود یعنی یا فایلش لود نشده (دیپلوی/کش) یا موقع parse خطا داده —
+  // و نه یه باگ منطقی داخل اپ.
+  logModuleHealth() {
+    const mods = ['API', 'Views', 'Modals', 'TGBridge', 'Dossier', 'PullRefresh', 'AvatarRenderer'];
+    const kv = { build: window.__MH_BUILD };
+    let missing = 0;
+    mods.forEach(m => { const ok = Boolean(window[m]); kv[m] = ok ? 1 : 0; if (!ok) missing++; });
+    kv.tgSdk = window.Telegram?.WebApp ? 1 : 0;
+    kv.initLen = (window.Telegram?.WebApp?.initData || '').length;
+    if (window.MHLog) {
+      missing ? MHLog.error('BOOT', 'modules', kv) : MHLog.info('BOOT', 'modules', kv);
+    }
+  },
+
   async init() {
     if (this._initialized) return;
     this._initialized = true;
 
     this.loadSignalFilters();
 
+    // ⚠️ به‌جای چند خط guardFail پراکنده (که قبلاً باید کنار هم می‌ذاشتی‌شون
+    // تا بفهمی چی لود نشده)، یه خط واحد: دقیقاً می‌گه کدوم ماژول‌ها روی
+    // window نشستن. اگه همه ۱ باشن، مشکل از لود ماژول‌ها نیست.
+    this.logModuleHealth();
+
     if (window.TGBridge && typeof TGBridge.init === 'function') {
       TGBridge.init();
-    } else if (window.logEvent) {
-      window.logEvent('BOOT', 'guardFail', { check: 'TGBridge.init', hasTGBridge: Boolean(window.TGBridge) });
     }
     this.startSplashTicker();
 
@@ -108,17 +126,9 @@ const App = {
       try {
         if (window.API && typeof API.authenticateWebApp === 'function') {
           session = await API.authenticateWebApp();
-        } else {
-          // ⚠️ فیکس مشاهده‌پذیری: قبلاً اگه این شرط رد می‌شد (یعنی api.js
-          // اصلاً لود نشده بود)، هیچ لاگی ثبت نمی‌شد و کل init ساکت جلو
-          // می‌رفت با session=null، دقیقاً همون چیزی که باعث AuthAttempt
-          // نبودن تو لاگ‌های قبلی می‌شد بدون هیچ توضیحی.
-          window.logEvent('BOOT', 'guardFail', { check: 'API.authenticateWebApp', hasAPI: Boolean(window.API) });
         }
         if (!session && window.API && typeof API.getSession === 'function') {
           session = await API.getSession();
-        } else if (!session) {
-          window.logEvent('BOOT', 'guardFail', { check: 'API.getSession', hasAPI: Boolean(window.API) });
         }
       } catch (e) {
         window.logEvent('APP', 'authNotice', { err: e.message || e });
@@ -137,13 +147,22 @@ const App = {
         } else if (typeof Views.renderCurrent === 'function') {
           Views.renderCurrent();
         }
-      } else {
-        window.logEvent('BOOT', 'guardFail', { check: 'window.Views' });
       }
 
       const tgUid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
       const isAdm = Boolean(session?.is_admin || session?.is_super_admin);
-      window.logEvent('APP', 'ready', { sessUid: session?.telegram_id || 'none', tgUid: tgUid || 'none', adm: isAdm, sigCount: this.state.signals.length });
+      // ⚠️ verified: آیا سشن از initData امضاشده اومده یا فقط از آیدی خام
+      // تلگرام. این تنها چیزیه که توضیح می‌ده «چرا ادمین نیستم» — اگه
+      // verified=0 باشه، سرور عمداً دسترسی ادمین نمی‌ده (چون هویت اثبات
+      // نشده)، و مشکل از لیست ادمین‌ها نیست.
+      window.logEvent('APP', 'ready', {
+        sessUid: session?.telegram_id || 'none',
+        tgUid: tgUid || 'none',
+        adm: isAdm,
+        verified: session ? (session.unverified ? 0 : 1) : 'none',
+        role: session?.role || 'none',
+        sigCount: this.state.signals.length
+      });
 
       if (window.PullRefresh && typeof PullRefresh.init === 'function') {
         PullRefresh.init('#tab-signals', async (isSilent) => {
@@ -159,8 +178,6 @@ const App = {
             }
           }
         });
-      } else {
-        window.logEvent('BOOT', 'guardFail', { check: 'PullRefresh.init', hasPullRefresh: Boolean(window.PullRefresh) });
       }
     } catch (err) {
       window.logEvent('APP', 'initErr', { err: err.message || err, stack: (err.stack || '').slice(0, 300) });
@@ -304,10 +321,17 @@ const App = {
 
   async loadSignals() {
     try {
-      if (window.API && typeof API.getSignals === 'function') {
-        const res = await API.getSignals();
-        this.state.signals = Array.isArray(res) ? res : (res?.items || res?.signals || res?.feed || []);
+      // ⚠️ فیکس صداقت لاگ: قبلاً اگه این شرط رد می‌شد (API لود نشده)، هیچ
+      // خطایی ثبت نمی‌شد و در ادامه `loadSignalsOK total=0` لاگ می‌شد —
+      // یعنی لاگ می‌گفت «موفق، صفر تا سیگنال» در حالی که اصلاً درخواستی
+      // زده نشده بود. همین یه خط، چند دور دیباگ رو به بیراهه برد.
+      if (!window.API || typeof API.getSignals !== 'function') {
+        if (window.MHLog) MHLog.error('APP', 'loadSignalsSkipped', { reason: 'API missing' });
+        return;
       }
+
+      const res = await API.getSignals();
+      this.state.signals = Array.isArray(res) ? res : (res?.items || res?.signals || res?.feed || []);
       
       const openCount = (this.state.signals || []).filter(s => {
         const st = String(s.outcome_status || s.status || 'open').toLowerCase();
@@ -329,6 +353,13 @@ const App = {
     }
   }
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 🚨 فیکس ریشه‌ای: `const App = {...}` هیچ‌وقت `window.App` نمی‌ساخت.
+ *   TGBridge.init() (دکمه‌ی بازگشت) و چند جای دیگه `window.App` رو چک
+ *   می‌کردن و همیشه رد می‌شدن. این خط باید *قبل از* App.init() باشه.
+ * ══════════════════════════════════════════════════════════════════════ */
+window.App = App;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => App.init());

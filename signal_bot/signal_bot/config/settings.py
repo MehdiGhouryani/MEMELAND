@@ -140,14 +140,16 @@ WEBAPP_AUTH_PATH = "/webapp-auth"
 
 
 def setup_logging():
-    logging.basicConfig(
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        level=logging.INFO,
-        handlers=[
-            logging.FileHandler("bot.log", encoding="utf-8"),
-            logging.StreamHandler()
-        ]
-    )
+    """
+    🚨 فیکس: این تابع قبلاً یه سیستم لاگ *دوم* می‌ساخت (root logger →
+    فایل bot.log توی پوشه‌ی جاری) در حالی که signal_bot/logger.py یه سیستم
+    مستقل داشت (logs/bot.log). نتیجه: لاگ‌ها بین دو فایل پخش می‌شدن،
+    `/logs` فقط یکی‌شون رو می‌خوند، و کنسول همه‌چی رو دوبار چاپ می‌کرد.
+    الان فقط به logger.py دلگیت می‌شه که هندلرها رو روی root نصب می‌کنه —
+    پس هم logging.* و هم logger.* دقیقاً یک بار، توی یک فایل می‌نویسن.
+    """
+    from signal_bot.logger import setup_logging as _setup
+    _setup()
 
 
 def validate():

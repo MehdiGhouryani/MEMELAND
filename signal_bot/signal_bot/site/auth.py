@@ -51,6 +51,22 @@ def _is_super_admin(telegram_id: Any) -> bool:
 
 
 def _is_staff_admin(telegram_id: int) -> bool:
+    """
+    🚨 فیکس واگرایی دو دیتابیس:
+      بات، کادر مدیریتی رو توی جدول `staff` دیتابیس *خودش* (signals.db، از
+      طریق db/staff_repo.py) می‌نویسه. ولی این تابع فقط جدول `staff`
+      دیتابیس *سایت* (site.db) رو می‌خوند. نتیجه: هر VIP Helper ای که از
+      داخل ربات اضافه می‌شد، توی وب‌اپ اصلاً ادمین شناخته نمی‌شد — و
+      برعکس. فقط ADMIN_IDS (از .env) اتفاقی توی هر دو کار می‌کرد، چون از
+      فایل محیطی میاد نه از دیتابیس.
+      الان هر دو دیتابیس چک می‌شن.
+    """
+    if _staff_row_in_site_db(telegram_id):
+        return True
+    return _staff_row_in_bot_db(telegram_id)
+
+
+def _staff_row_in_site_db(telegram_id: int) -> bool:
     conn = get_db()
     try:
         c = conn.cursor()
@@ -60,10 +76,66 @@ def _is_staff_admin(telegram_id: int) -> bool:
         c.execute("SELECT role FROM staff WHERE user_id=? AND role IN ('admin', 'vip_helper')", (telegram_id,))
         return c.fetchone() is not None
     except Exception as e:
-        logger.warning(f"StaffChkErr: uid={telegram_id} err={e}")
+        logger.warning(f"StaffChkErr: db=site uid={telegram_id} err={e}")
         return False
     finally:
         conn.close()
+
+
+def _staff_row_in_bot_db(telegram_id: int) -> bool:
+    try:
+        from signal_bot.db.connection import get_db as get_bot_db
+    except Exception:
+        return False
+    conn = get_bot_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='staff'")
+        if not c.fetchone():
+            return False
+        c.execute("SELECT role FROM staff WHERE user_id=? AND role IN ('admin', 'vip_helper')", (telegram_id,))
+        return c.fetchone() is not None
+    except Exception as e:
+        logger.warning(f"StaffChkErr: db=bot uid={telegram_id} err={e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _bot_user_role(telegram_id: int):
+    """
+    🚨 فیکس: `get_user_role_and_quota` جدول `users` رو توی site.db جست‌وجو
+    می‌کرد — جدولی که اصلاً اون‌جا وجود نداره (فقط توی signals.db هست).
+    چون کد قبل از کوئری با sqlite_master وجود جدول رو چک می‌کرد، هیچ خطایی
+    نمی‌داد و *بی‌صدا* همیشه رول پیش‌فرض ('rookie') برمی‌گردوند. یعنی سقف
+    سهمیه‌ی روزانه‌ی همه‌ی کاربرها روی ۳ گیر کرده بود، صرف‌نظر از رول
+    واقعی‌شون توی ربات. (traders.py همین باگ رو قبلاً برای username فیکس
+    کرده بود، ولی اینجا جا مونده بود.)
+    """
+    try:
+        from signal_bot.db.connection import get_db as get_bot_db
+    except Exception:
+        return None
+    conn = get_bot_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not c.fetchone():
+            return None
+        c.execute("SELECT role FROM users WHERE user_id=?", (telegram_id,))
+        row = c.fetchone()
+        return row[0] if row and row[0] else None
+    except Exception as e:
+        logger.warning(f"BotRoleErr: uid={telegram_id} err={e}")
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _is_admin(telegram_id: Any) -> bool:
@@ -76,20 +148,24 @@ def _is_admin(telegram_id: Any) -> bool:
         return False
 
 
-def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
+def get_user_role_and_quota(telegram_id: int, elevate: bool = True) -> Dict[str, Any]:
+    """
+    elevate=False ⇒ هیچ ارتقای ادمینی اعمال نمی‌شه، حتی اگه کاربر واقعاً
+    ادمین باشه. این برای «سشن تأییدنشده» لازمه (کاربری که فقط آیدی خام
+    تلگرام رو فرستاده و هویتش رمزنگاری‌شده اثبات نشده).
+
+    🚨 چرا این پارامتر حیاتیه: routes.py توی مسیر تأییدنشده، is_admin سطح
+    بالا رو False می‌کرد ولی همین دیکشنری quota رو دست‌نخورده برمی‌گردوند —
+    و داخلش is_admin/is_super_admin واقعی بود. کلاینت (app.js →
+    updateUserInterface) دقیقاً `quota?.is_admin === true` رو هم چک می‌کنه،
+    پس کل پنل ادمین برای یه هویت اثبات‌نشده باز می‌شد.
+    """
     telegram_id = int(telegram_id)
-    role_key = getattr(settings, "DEFAULT_ROLE", "rookie")
-    
+    role_key = _bot_user_role(telegram_id) or getattr(settings, "DEFAULT_ROLE", "rookie")
+
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if c.fetchone():
-            c.execute("SELECT role FROM users WHERE user_id=?", (telegram_id,))
-            row = c.fetchone()
-            if row and row[0]:
-                role_key = row[0]
-
         since_24h = (_utcnow() - timedelta(hours=24)).isoformat()
         signals_count = 0
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='signals'")
@@ -110,8 +186,8 @@ def get_user_role_and_quota(telegram_id: int) -> Dict[str, Any]:
     role_labels = getattr(settings, "ROLE_LABELS", {})
     role_label = role_labels.get(role_key, role_key)
 
-    is_super = _is_super_admin(telegram_id)
-    is_adm = _is_admin(telegram_id)
+    is_super = bool(elevate) and _is_super_admin(telegram_id)
+    is_adm = bool(elevate) and _is_admin(telegram_id)
     if is_super:
         display_role = "👑 Super Admin"
         daily_limit = 999
@@ -245,7 +321,9 @@ def authenticate_webapp(init_data: str, bot_token: str, max_age_seconds: int = 8
 
     _upsert_profile(telegram_id, display_name=display_name, role=role)
 
-    token = create_session(
+    # ⚠️ اگه سشن زنده‌ای هست، همون رو استفاده کن. قبلاً هر بار باز کردن
+    # وب‌اپ یه ردیف جدید می‌ساخت که هیچ‌وقت پاک نمی‌شد.
+    token = find_active_token(telegram_id) or create_session(
         telegram_id=telegram_id,
         username=username,
         first_name=display_name,
@@ -337,6 +415,80 @@ def create_session(
         conn.close()
 
     return token
+
+
+def find_active_token(telegram_id: int) -> Optional[str]:
+    """
+    آخرین توکن معتبر و منقضی‌نشده‌ی این کاربر رو برمی‌گردونه (یا None).
+
+    🚨 باگی که حل می‌کنه: `_resolve_user_session` توی routes.py برای *هر
+    درخواستی* یه ردیف جدید توی جدول sessions می‌ساخت. هر بار لود صفحه
+    حداقل ۲ درخواست می‌زنه (auth + signals) و pull-refresh هم همین‌طور.
+    یعنی جدول sessions بی‌نهایت رشد می‌کرد، با هزاران توکن زنده به ازای یه
+    کاربر — هم نشت منابع، هم افزایش سطح حمله (هر توکن ۳۰ روز اعتبار داره).
+    """
+    telegram_id = int(telegram_id)
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT token, expires_at FROM sessions WHERE telegram_id=? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (telegram_id,),
+        )
+        row = c.fetchone()
+    except Exception as e:
+        logger.warning(f"FindTokenErr: uid={telegram_id} err={e}")
+        return None
+    finally:
+        conn.close()
+
+    if not row:
+        return None
+    token, expires_raw = row
+    try:
+        expires_at = datetime.fromisoformat(expires_raw)
+        if expires_at.tzinfo is not None:
+            expires_at = expires_at.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return None
+    # کمتر از یک روز مونده؟ توکن تازه بده تا وسط کار منقضی نشه.
+    if expires_at - _utcnow() < timedelta(days=1):
+        return None
+    return token
+
+
+def purge_expired_sessions() -> int:
+    """
+    سشن‌های منقضی‌شده رو پاک می‌کنه. قبلاً هیچ‌وقت هیچ‌چی از جدول sessions
+    حذف نمی‌شد. از main.py به‌صورت دوره‌ای صدا زده می‌شه.
+    """
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM sessions WHERE expires_at < ?", (_utcnow().isoformat(),))
+        removed = c.rowcount
+        conn.commit()
+        if removed:
+            logger.info(f"SessPurge: removed={removed}")
+        return max(0, removed)
+    except Exception as e:
+        logger.warning(f"SessPurgeErr: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
+def count_sessions() -> int:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM sessions")
+        return c.fetchone()[0]
+    except Exception:
+        return -1
+    finally:
+        conn.close()
 
 
 def get_session(token: str) -> Optional[Dict[str, Any]]:

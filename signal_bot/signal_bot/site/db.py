@@ -16,10 +16,30 @@ import sqlite3
 
 DB_FILE = os.environ.get("SITE_DB_FILE", "site.db")
 
+# ⚠️ فیکس پایداری: وب‌سرور aiohttp و بات توی یه پروسه‌ی واحد و یه event loop
+# اجرا می‌شن، و همه‌ی فراخوانی‌های sqlite3 همگام‌ان. با تنظیمات پیش‌فرض:
+#   • timeout=5s ⇒ زیر بار هم‌زمان (چند کاربر + جاب زمان‌بندی
+#     check_entry_alerts هر ۴۵ ثانیه) خطای «database is locked» می‌گرفتیم.
+#     site_sync حتی یه retry مخصوص همین خطا داره — یعنی واقعاً اتفاق می‌افتاده.
+#   • journal_mode=DELETE ⇒ خواننده و نویسنده همدیگه رو بلاک می‌کنن.
+# WAL خواننده‌ها رو از نویسنده جدا می‌کنه و busy_timeout جای تنفس می‌ده.
+_PRAGMAS = (
+    "PRAGMA foreign_keys = ON",
+    "PRAGMA journal_mode = WAL",
+    "PRAGMA synchronous = NORMAL",
+    "PRAGMA busy_timeout = 8000",
+)
+
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = sqlite3.connect(DB_FILE, timeout=8.0)
+    for pragma in _PRAGMAS:
+        try:
+            conn.execute(pragma)
+        except sqlite3.Error:
+            # WAL روی بعضی فایل‌سیستم‌های شبکه‌ای پشتیبانی نمی‌شه — اون موقع
+            # به حالت پیش‌فرض برمی‌گرده، نه این‌که کل اتصال بترکه.
+            pass
     return conn
 
 
@@ -49,6 +69,7 @@ def init_db():
         expires_at TEXT NOT NULL
     )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_telegram_id ON sessions(telegram_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)")
 
     # ---------- user_profiles (دائمی، به‌ازای telegram_id — نه به‌ازای session) ----------
     # ⚠️ قبلاً role فقط رو خودِ session بود، و نام نمایشی فقط تو localStorage

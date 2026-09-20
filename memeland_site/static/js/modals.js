@@ -530,3 +530,21 @@ const Modals = {
     if (modal) modal.classList.remove('show');
   }
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 🚨 فیکس ریشه‌ای (باگ اصلی این دور):
+ *   `const X = {...}` در بالاترین سطح یک classic script، فقط یه binding
+ *   *لغوی* توی global scope می‌سازه — برخلاف `var`، هیچ‌وقت به‌صورت
+ *   `window.X` قابل‌دسترسی نیست. یعنی `X` کار می‌کرد ولی `window.X`
+ *   همیشه undefined بود.
+ *   کل کد (app.js، telegram.js، ...) قبل از هر فراخوانی `window.X` رو
+ *   چک می‌کرد ⇒ همه‌ی گاردها رد می‌شدن، احراز هویت هیچ‌وقت اجرا نمی‌شد،
+ *   سشن null می‌موند و adm=false بود. دقیقاً همون چیزی که تو لاگ دیده شد:
+ *     [BOOT] guardFail check=API.getSession hasAPI=false
+ *     [BOOT] guardFail check=TGBridge.init hasTGBridge=false
+ *     [BOOT] guardFail check=window.Views
+ *   این یه خط، اون رو می‌بنده. (avatars.js و pull_refresh.js از اول این
+ *   کار رو درست انجام می‌دادن — برای همین اون دوتا هیچ‌وقت guardFail نداشتن.)
+ * ══════════════════════════════════════════════════════════════════════ */
+window.Modals = Modals;
+if (window.MHLog) MHLog.info('BOOT', 'modals.js', { build: window.__MH_BUILD });

@@ -2,33 +2,16 @@
  * MemeLand API Service & Session Manager (v7.6.0 - Robust Token Sanitization & Direct Array Parser)
  */
 
-// ⚠️ فیکس مقاوم‌سازی: اگه به هر دلیلی اسکریپت inline تو index.html اجرا
-// نشده باشه (کش قدیمی، ترتیب لود عجیب، ...)، این تعریف‌های fallback
-// می‌ذارن که خودِ صدا زدن logEvent/logEventThrottled/sendRemoteLog تو هیچ
-// فایلی throw نکنه — چون این توابع همه‌جای پروژه بدون گارد صدا زده می‌شن؛
-// گارد گذاشتن تک‌تک جاها هم شکننده‌ست، این یه‌جا امن‌ترش می‌کنه.
-window.sendRemoteLog = window.sendRemoteLog || function (msg) {
-  try {
-    fetch('/site/client-log', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: msg })
-    }).catch(function () {});
-  } catch (e) {}
-};
-window.logEvent = window.logEvent || function (tag, event, kv) {
-  var parts = ['[' + tag + ']', event];
-  if (kv) { for (var k in kv) { if (Object.prototype.hasOwnProperty.call(kv, k)) { parts.push(k + '=' + kv[k]); } } }
-  parts.push('sid=' + (window.__MH_SID || '?'));
-  window.sendRemoteLog(parts.join(' '));
-};
-window.logEventThrottled = window.logEventThrottled || function (tag, event, kv) {
-  window.logEvent(tag, event, kv);
-};
+// ⚠️ لاگر: تعریف fallback تکراری که قبلاً اینجا بود حذف شد. تنها منبع
+// حقیقت حالا /static/js/logger.js هست که *قبل از* این فایل لود می‌شه، و
+// index.html هم یه shim قبل-از-بوت داره. دو تعریف موازی از logEvent باعث
+// می‌شد رفتار throttle بین فایل‌ها فرق کنه و دیباگ گمراه‌کننده بشه.
 
 // ⚠️ خط اثر انگشت بوت: همین لحظه‌ی parse شدن فایل، نه داخل یه تابع. اگه این
 // خط تو لاگ سرور نبود، یعنی این نسخه از api.js اصلاً رو مرورگر لود نشده
 // (مشکل دیپلوی/کش)، نه یه باگ منطقی داخل کد.
 try {
-  window.logEvent('BOOT', 'api.js loaded', { build: window.__MH_BUILD || '?' });
+  window.logEvent('BOOT', 'api.js', { build: window.__MH_BUILD || '?' });
 } catch (e) {}
 
 // ⚠️ فیکس امنیتی (XSS ذخیره‌شده): تمام دیتای آزادِ کاربر (توضیحات سیگنال، اسم
@@ -151,8 +134,13 @@ const API = {
       }
     }
 
-    if (authData && authData.token) {
-      this.setToken(authData.token);
+    if (authData) {
+      // ⚠️ فیکس: قبلاً فقط وقتی توکن بود authData برگردونده می‌شد. بعد از
+      // سخت‌سازی سمت سرور، مسیر «تأییدنشده» (initData نداریم، فقط آیدی
+      // تلگرام) عمداً دیگه توکن صادر نمی‌کنه — ولی هویت و نام نمایشی رو
+      // برمی‌گردونه. بدون این فیکس، یه رفت‌وبرگشت اضافه به /site/session
+      // می‌خورد که همون جواب رو می‌داد.
+      if (authData.token) this.setToken(authData.token);
       return authData;
     }
 
@@ -275,3 +263,16 @@ const API = {
     }
   }
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 🚨 فیکس ریشه‌ای: `const API = {...}` توی یه classic script هیچ‌وقت
+ *   `window.API` نمی‌سازه (فقط binding لغوی global). تمام گاردهای
+ *   `if (window.API && ...)` توی app.js به همین دلیل رد می‌شدن و
+ *   احراز هویت/لود سیگنال اصلاً اجرا نمی‌شد.
+ *   escapeHtml/safeUrl چون function declaration ان از قبل روی window
+ *   می‌نشستن، ولی برای خوانایی صریح شدن.
+ * ══════════════════════════════════════════════════════════════════════ */
+window.API = API;
+window.escapeHtml = escapeHtml;
+window.safeUrl = safeUrl;
+if (window.MHLog) MHLog.info('BOOT', 'api.js ready', { build: window.__MH_BUILD });
