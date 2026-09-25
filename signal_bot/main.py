@@ -264,6 +264,34 @@ async def handle_sync_all_command(update: Update, context: ContextTypes.DEFAULT_
     await msg.edit_text(body, parse_mode=ParseMode.HTML)
 
 
+async def handle_wipe_sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /wipe_sessions confirm
+
+    🔒 پیرو دور اول امنیتی: قبل از اون پچ، مسیر X-Telegram-User-Id هم
+    ارتقای کامل دسترسی رو ممکن می‌کرد و هم یه توکن سشن واقعیِ ۳۰روزه صادر
+    می‌کرد. آسیب‌پذیری بسته شده، ولی هر توکنی که *قبل* از دیپلوی پچ صادر
+    شده، همچنان تو جدول sessions زنده‌ست — و get_session() فرقی بین «توکنِ
+    صادرشده از مسیر امن» و «توکنِ صادرشده قبل از فیکس» نمی‌ذاره.
+    این دستور همه‌ی سشن‌ها رو یک‌جا باطل می‌کنه (همه باید دوباره وارد وب‌اپ
+    بشن، که خودکار و بی‌درده). توصیه: یه‌بار، بلافاصله بعد از دیپلوی پچ
+    امنیتی، اجرا بشه.
+    """
+    user_id = update.effective_user.id
+    if not site_auth._is_admin(user_id):
+        return
+    if not context.args or context.args[0].lower() != "confirm":
+        await update.message.reply_text(
+            "⚠️ این دستور همه‌ی نشست‌های فعال وب‌اپ رو باطل می‌کنه (همه باید "
+            "دوباره وارد بشن).\nبرای تأیید:\n<code>/wipe_sessions confirm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    n = site_auth.count_sessions()
+    site_auth.wipe_all_sessions()
+    await update.message.reply_text(f"✅ {n} نشست باطل شد. همه باید دوباره وب‌اپ رو باز کنند.")
+
+
 async def _purge_sessions_job(context: ContextTypes.DEFAULT_TYPE):
     """پاک‌سازی دوره‌ی سشن‌های منقضی — قبلاً هیچ‌وقت چیزی حذف نمی‌شد."""
     site_auth.purge_expired_sessions()
@@ -301,6 +329,7 @@ def main():
     app.add_handler(CommandHandler(["logs", "syslog"], handle_logs_command))
     app.add_handler(CommandHandler("diag", handle_diag_command))
     app.add_handler(CommandHandler("sync_all", handle_sync_all_command))
+    app.add_handler(CommandHandler("wipe_sessions", handle_wipe_sessions_command))
 
     # ── هندلرهای کال‌بک (Callbacks) ──────────────────────
     app.add_handler(CallbackQueryHandler(signals.direction_callback, pattern="^dir_"))

@@ -5,9 +5,20 @@ from signal_bot.db.connection import get_db
 
 
 def daily_signal_count(user_id):
+    """
+    ⚠️ فیکس منطقه‌ی زمانی: قبلاً «امروز» با ساعت محلی سرور (datetime.now())
+    محاسبه می‌شد، و created_at این جدول هم قبلاً محلی بود — تا اینجا داخلی
+    سازگار بود. ولی سینک دوطرفه‌ی سایت↔ربات که اضافه شد، همین ستون
+    created_at رو با رکوردهایی که از سایت میان (UTC ذخیره می‌شن) قاطی کرد.
+    اگه این تابع محلی می‌موند ولی insert_signal زیرش UTC بشه، سهمیه‌ی
+    روزانه با آفستِ ساعت سرور جابه‌جا می‌شد. برای رفع کامل ناسازگاری، این
+    ستون از این‌جا به بعد سراسر UTC ذخیره و مقایسه می‌شه.
+    توجه: یعنی سقف سهمیه‌ی روزانه از این پس در نیمه‌شب UTC ریست می‌شه، نه
+    نیمه‌شب محلی سرور — یه تغییر رفتاریه که باید بدونید.
+    """
     conn = get_db()
     c = conn.cursor()
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
     c.execute("""SELECT COUNT(*) FROM signals
                  WHERE user_id=? AND created_at LIKE ? AND status != 'rejected'""",
               (user_id, f"{today}%"))
@@ -25,13 +36,16 @@ def insert_signal(user_id, coin, signal_type="full", direction=None, entry=None,
     """
     conn = get_db()
     c = conn.cursor()
+    # ⚠️ UTC — نگاه کن به توضیح داخل daily_signal_count بالا. تا با
+    # created_at ردیف‌های سینک‌شده از سایت (که همیشه UTC هستن) یکسان بمونه
+    # و لیدربورد/سهمیه هیچ‌جا آفست ساعت سرور رو نبینن.
     c.execute("""INSERT INTO signals
         (user_id,coin,direction,entry,stop_loss,take_profit,
          description,signal_type,photo_file_id,channel,risk_level,status,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?)""",
         (user_id, coin, direction, entry, sl, tp,
          description, signal_type, photo_file_id, channel, risk_level,
-         datetime.now().isoformat()))
+         datetime.utcnow().isoformat()))
     signal_id = c.lastrowid
     conn.commit()
     conn.close()
@@ -375,7 +389,11 @@ def insert_from_site(site_signal_id, user_id, coin, direction=None, description=
         VALUES (?,?,?,?,'full',?,?,?,'approved','open',0,?,?)""",
         (user_id, coin, direction, description or "", photo_file_id or "",
          channel or "alt", risk_level or "low", site_signal_id,
-         created_at or datetime.now().isoformat()))
+         # ⚠️ UTC — همون دلیل daily_signal_count. اگه created_at از سایت
+         # نیومده باشه (نباید پیش بیاد، ولی برای امنیت)، fallback هم باید
+         # همون قرارداد رو رعایت کنه، وگرنه دقیقاً همون قاطی‌شدنی که
+         # می‌خواستیم جلوش رو بگیریم دوباره برمی‌گرده.
+         created_at or datetime.utcnow().isoformat()))
     signal_id = c.lastrowid
     conn.commit()
     conn.close()

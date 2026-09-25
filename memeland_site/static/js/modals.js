@@ -51,6 +51,67 @@ const Modals = {
     }
   },
 
+  // ══════════════════════════════════════════════════════════════════════
+  // 🚨 فیکس ریشه‌ای حذف: تا اینجا هر عملیات مخرب (حذف سیگنال، حذف مقاله،
+  // سلب دسترسی کادر) قبلش از TGBridge.showConfirm (یعنی Telegram.WebApp.
+  // showConfirm) رأی می‌گرفت. این یه محدودیت شناخته‌شده و مستندِ اکوسیستم
+  // Telegram Mini App هست:
+  //
+  //   ۱. اگه SDK این متد رو نداشته باشه (نسخه‌ی قدیمی Bot API، یا کلاینتی
+  //      که هنوز آپدیت نشده)، کد به‌جاش window.confirm خام رو صدا می‌زنه.
+  //   ۲. Mini App ها داخل Telegram Web/Desktop تو یه <iframe> sandbox شده
+  //      لود می‌شن که popup های بومی مرورگر (alert/confirm/prompt) توش
+  //      *مسدودن* — این دقیقاً همون محدودیتیه که خودِ تلگرام برای همین
+  //      مسدودشدن، showAlert/showConfirm رو به‌عنوان جایگزین ارائه داده.
+  //   ۳. وقتی confirm() داخل چنین iframe ای صدا زده بشه، یا بی‌صدا false/
+  //      undefined برمی‌گرده یا throw می‌کنه — و چون این فراخوانی *داخل*
+  //      یه `new Promise(resolve => ...)` هست بدون try/catch، اگه throw
+  //      کنه Promise برای همیشه معلق می‌مونه. یعنی `await TGBridge.
+  //      showConfirm(...)` هیچ‌وقت برنمی‌گرده، و خط بعدش (خودِ فراخوانی
+  //      حذف) هیچ‌وقت اجرا نمی‌شه — دقیقاً همون چیزی که با «دکمه‌ی حذف رو
+  //      می‌زنم هیچی نمی‌شه، نه خطایی نه لاگی» توصیف شد.
+  //
+  // فیکس: دیگه به هیچ popup بومی مرورگر یا هیچ متد اختصاصی تلگرام برای
+  // تأیید عملیات تکیه نمی‌کنیم. یه مودال کاملاً خودمون (همون modalOverlay
+  // موجود) که تضمین می‌ده روی *هر* کلاینتی (موبایل/وب/دسکتاپ) یکسان کار
+  // کنه، چون فقط HTML/CSS/JS ساده‌ست، نه یه API که رفتارش وابسته به نسخه‌ی
+  // کلاینته.
+  // ══════════════════════════════════════════════════════════════════════
+  _confirmResolve: null,
+
+  confirmAction(message, opts = {}) {
+    this.haptic('selection');
+    return new Promise((resolve) => {
+      // اگه یه تأیید قبلی هنوز معلق مونده (نباید پیش بیاد، ولی برای
+      // امنیت)، اول اون رو false ببند تا هیچ Promise ای برای همیشه گیر نکنه.
+      if (this._confirmResolve) {
+        const prev = this._confirmResolve;
+        this._confirmResolve = null;
+        prev(false);
+      }
+      this._confirmResolve = resolve;
+
+      document.getElementById('modalTitle').textContent = opts.title || 'تأیید عملیات';
+      document.getElementById('modalBody').innerHTML = `
+        <p style="font-size:12.5px; line-height:1.9; color:var(--text); margin-bottom:18px;">${escapeHtml(message)}</p>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" style="flex:1;" onclick="Modals._resolveConfirm(false)">انصراف</button>
+          <button class="btn btn-primary" style="flex:1; ${opts.danger !== false ? 'background:var(--red); border-color:var(--red);' : ''}"
+                  onclick="Modals._resolveConfirm(true)">${opts.confirmText || 'بله، تأیید می‌کنم'}</button>
+        </div>
+      `;
+      document.getElementById('modalOverlay').classList.add('show');
+    });
+  },
+
+  _resolveConfirm(value) {
+    const resolve = this._confirmResolve;
+    this._confirmResolve = null;
+    this.closeModal();
+    this.haptic(value ? 'success' : 'light');
+    if (resolve) resolve(value);
+  },
+
   // ================= مدال ثبت سیگنال با آپلود تصویر =================
   openAddSignalModal() {
     this.haptic('selection');
@@ -247,10 +308,8 @@ const Modals = {
   },
 
   async deleteArticleAction(articleId) {
-    if (window.TGBridge) {
-      const conf = await TGBridge.showConfirm('آیا از حذف این مقاله مطمئن هستید؟');
-      if (!conf) return;
-    }
+    const conf = await this.confirmAction('آیا از حذف این مقاله مطمئن هستید؟');
+    if (!conf) return;
 
     const { headers } = this.getAuthContext();
 
@@ -319,12 +378,23 @@ const Modals = {
   },
 
   async deleteSignalAction(id) {
-    if (window.TGBridge) {
-      const conf = await TGBridge.showConfirm('آیا از حذف این سیگنال مطمئن هستید؟');
-      if (!conf) return;
+    if (window.MHLog) MHLog.info('MODALS', 'deleteConfirmShown', { sid: id });
+    const conf = await this.confirmAction('آیا از حذف این سیگنال مطمئن هستید؟ این عمل قابل بازگشت نیست.');
+    if (window.MHLog) MHLog.info('MODALS', 'deleteConfirmResult', { sid: id, confirmed: conf });
+    if (!conf) return;
+
+    let resp;
+    try {
+      resp = await API.deleteSignal(id);
+    } catch (e) {
+      if (window.MHLog) MHLog.error('MODALS', 'deleteNetworkErr', { sid: id, err: e.message || e });
+      this.haptic('error');
+      if (window.TGBridge) TGBridge.showAlert('خطا در ارتباط با سرور');
+      return;
     }
 
-    const resp = await API.deleteSignal(id);
+    if (window.MHLog) MHLog.info('MODALS', 'deleteHttp', { sid: id, status: resp.status, ok: resp.ok });
+
     if (resp.ok) {
       this.haptic('success');
       Views.closeBottomSheet();
@@ -332,7 +402,7 @@ const Modals = {
       Views.renderSignalsList();
     } else {
       this.haptic('error');
-      if (window.TGBridge) TGBridge.showAlert('خطا در حذف سیگنال');
+      if (window.TGBridge) TGBridge.showAlert('خطا در حذف سیگنال — کد ' + resp.status);
     }
   },
 
@@ -467,7 +537,7 @@ const Modals = {
             <div style="display:flex; align-items:center; gap:6px;">
               <span class="badge-vip" style="font-size:9.5px; padding:2px 7px;">${roleText}</span>
               ${!isSuper ? `
-                <button class="btn-del-article" style="padding:4px 8px; font-size:10px;" onclick="Modals.removeStaffAction(${item.user_id})">حذف</button>
+                <button class="btn-del-staff" style="padding:4px 8px; font-size:10px;" onclick="Modals.removeStaffAction(${item.user_id})">حذف</button>
               ` : ''}
             </div>
           </div>
@@ -504,10 +574,8 @@ const Modals = {
   },
 
   async removeStaffAction(uid) {
-    if (window.TGBridge) {
-      const conf = await TGBridge.showConfirm(`آیا از سلب دسترسی کاربر ${uid} اطمینان دارید؟`);
-      if (!conf) return;
-    }
+    const conf = await this.confirmAction(`آیا از سلب دسترسی کاربر ${uid} اطمینان دارید؟`);
+    if (!conf) return;
 
     const { headers } = this.getAuthContext();
 
@@ -515,6 +583,7 @@ const Modals = {
       method: 'DELETE',
       headers: headers
     });
+    if (window.MHLog) MHLog.info('MODALS', 'staffRemoveHttp', { uid, status: resp.status, ok: resp.ok });
 
     if (resp.ok) {
       this.haptic('success');
@@ -528,6 +597,13 @@ const Modals = {
   closeModal() {
     const modal = document.getElementById('modalOverlay');
     if (modal) modal.classList.remove('show');
+    // اگه یه confirmAction معلقه و کاربر با دکمه‌ی ✕ (نه دو دکمه‌ی داخل
+    // مودال) بست، Promise باید false برگرده، وگرنه برای همیشه معلق می‌مونه.
+    if (this._confirmResolve) {
+      const resolve = this._confirmResolve;
+      this._confirmResolve = null;
+      resolve(false);
+    }
   }
 };
 

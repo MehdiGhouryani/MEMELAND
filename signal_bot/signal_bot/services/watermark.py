@@ -38,16 +38,32 @@ def apply_watermark(image_bytes: bytes, custom_text: str = None) -> bytes:
         font_size = max(16, int(width * 0.035))
 
         font = None
+        # 🚨: قبلاً دو ".." داشت (services/ → signal_bot/signal_bot →
+        # signal_bot/memeland_site) که هیچ‌وقت وجود نداره — پوشه‌ی memeland_site
+        # کنار signal_bot/ هست، نه توش. باید سه‌تا ".." باشه، دقیقاً مثل الگویی
+        # که routes.py و image_upload.py استفاده می‌کنن. تا وقتی این مسیر غلط
+        # بود، فونت اختصاصی هیچ‌وقت پیدا نمی‌شد و بی‌صدا به فونت‌های لاتین
+        # (DejaVu/Arial) سقوط می‌کرد — که فارسی رو اصلاً پشتیبانی نمی‌کنن، پس
+        # متن فارسیِ واترمارک به‌جای حروف، جعبه‌های خالی (tofu) نمایش داده می‌شد.
         candidate_fonts = [
-            os.path.join(os.path.dirname(__file__), "..", "..", "memeland_site", "static", "fonts", "Vazirmatn-Bold.ttf"),
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "memeland_site",
+                         "static", "fonts", "Vazirmatn-Bold.ttf"),
+            # فونت‌های فارسی/عربیِ رایج روی سرورهای لینوکسی که بسته‌ی fonts-noto
+            # نصب دارن — best-effort، اگه نصب نباشن بی‌ضرر رد می‌شن.
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+            "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Bold.ttf",
+            # فونت‌های لاتین — فقط برای متن انگلیسی درست نمایش داده می‌شن.
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "arialbd.ttf",
             "arial.ttf"
         ]
-        for fpath in candidate_fonts:
+        persian_capable_used = False
+        for i, fpath in enumerate(candidate_fonts):
             if os.path.exists(fpath):
                 try:
                     font = ImageFont.truetype(fpath, font_size)
+                    persian_capable_used = i <= 3  # سه کاندیدای اول فارسی/عربی پشتیبانی می‌کنن
                     break
                 except Exception:
                     continue
@@ -57,6 +73,16 @@ def apply_watermark(image_bytes: bytes, custom_text: str = None) -> bytes:
                 font = ImageFont.load_default()
             except Exception:
                 pass
+
+        # ⚠️ لاگ تشخیصی: اگه متن واترمارک غیر-ASCII باشه (فارسی/عربی) ولی هیچ
+        # فونت فارسی‌ای پیدا نشد، همینجا واضح بگو — وگرنه تنها نشونه‌ی این باگ
+        # جعبه‌های خالی روی خودِ عکسه، که هیچ‌جا لاگ نمی‌شه.
+        if not persian_capable_used and any(ord(ch) > 127 for ch in watermark_text):
+            logger.warning(
+                f"WTM_NoPersianFont: text='{watermark_text}' — هیچ فونت فارسی/عربی پیدا "
+                f"نشد؛ حروف احتمالاً به‌شکل جعبه‌ی خالی نمایش داده می‌شن. یه فایل .ttf فارسی "
+                f"(مثل Vazirmatn-Bold.ttf) رو تو static/fonts/ بذار."
+            )
 
         bbox = draw.textbbox((0, 0), watermark_text, font=font)
         text_w = bbox[2] - bbox[0]

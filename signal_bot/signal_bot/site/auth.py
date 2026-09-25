@@ -452,6 +452,29 @@ def _delete_staff_row(conn_factory, user_id: int) -> int:
             pass
 
 
+def sync_staff_row_from_bot(user_id: int, role: str) -> bool:
+    """
+    وقتی نقش کادر از داخل *چت* (staff_repo.add_vip_helper، دکمه‌ی
+    vip_add_) عوض می‌شه، این جدول staff دیتابیس *سایت* رو هم هماهنگ
+    می‌کنه — تا هر دو مسیر (چت و وب‌اپ) همیشه یک نتیجه رو ببینن.
+
+    🚨 بدون این، یه ناسازگاریِ هم‌خانواده با باگ دور دوم باقی می‌موند:
+    add_or_update_staff (سمت وب‌اپ) از ابتدا هر دو دیتابیس رو می‌نوشت، ولی
+    دکمه‌ی vip_add_/vip_remove_ داخل چت (که قدیمی‌تره) فقط دیتابیس ربات رو
+    می‌نوشت. اثر عملی: کسی که با دکمه‌ی چت VIP Helper می‌شد، تو وب‌اپ درست
+    دیده می‌شد (چون get_staff_list هر دو دیتابیس رو می‌خونه)، ولی اگه بعداً
+    از همون دکمه‌ی چت *حذف* می‌شد، ردیفِ دیتابیس سایت دست‌نخورده می‌موند —
+    یعنی توی سایت (و هر جایی که فقط site.db رو چک می‌کرد) همچنان دسترسی
+    داشت، درحالی‌که تو چت دیگه نداشت.
+    """
+    return _write_staff_row(get_db, int(user_id), role)
+
+
+def unsync_staff_row_from_bot(user_id: int) -> int:
+    """نصف مکملِ sync_staff_row_from_bot — برای دکمه‌ی vip_remove_."""
+    return _delete_staff_row(get_db, int(user_id))
+
+
 def add_or_update_staff(user_id: int, role: str) -> bool:
     """
     اعطای نقش — با مسیردهی به دیتابیس درست بر اساس نوع نقش.
@@ -715,6 +738,24 @@ def count_sessions() -> int:
         return c.fetchone()[0]
     except Exception:
         return -1
+    finally:
+        conn.close()
+
+
+def wipe_all_sessions() -> int:
+    """باطل‌کردن یک‌جای همه‌ی نشست‌ها — نگاه کن به /wipe_sessions در main.py
+    برای دلیل امنیتی. عمداً غیرقابل‌بازگشت و بدون فیلتره."""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM sessions")
+        n = c.rowcount
+        conn.commit()
+        logger.warning(f"SessWipeAll: removed={n}")
+        return max(0, n)
+    except Exception as e:
+        logger.error(f"SessWipeAllErr: {e}")
+        return 0
     finally:
         conn.close()
 

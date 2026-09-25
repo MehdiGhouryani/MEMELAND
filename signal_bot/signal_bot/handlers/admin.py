@@ -15,6 +15,7 @@ from signal_bot.config.settings import (
 from signal_bot.db import users_repo, signals_repo, prize_repo, staff_repo, rewards_repo, caller_donations_repo
 from signal_bot.services import scoring, access, results, site_sync, image_upload
 from signal_bot.site import signals as site_signals
+from signal_bot.site import auth as site_auth
 from signal_bot.services.notify import safe_send_message, safe_send_photo, safe_send_document
 from signal_bot.keyboards.keyboards import (
     admin_kb, back_main_kb, approve_reject_kb, signal_result_kb, user_manage_kb, role_picker_kb, btn
@@ -374,6 +375,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[2])
         staff_repo.add_vip_helper(target_id, added_by=user.id)
+        site_auth.sync_staff_row_from_bot(target_id, "vip_helper")  # ⚠️ هماهنگی با وب‌اپ
         logger.info(f"VipAdd: uid={target_id} by={user.id}")
         await q.edit_message_text(f"✅  کاربر {target_id} به VIP Helper ارتقا یافت.")
         await safe_send_message(context.bot, chat_id=target_id,
@@ -385,6 +387,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = int(data.split("_")[2])
         staff_repo.remove_vip_helper(target_id)
+        site_auth.unsync_staff_row_from_bot(target_id)  # ⚠️ هماهنگی با وب‌اپ
         logger.info(f"VipDel: uid={target_id} by={user.id}")
         await q.edit_message_text(f"🔻  دسترسی VIP Helper کاربر {target_id} حذف شد.")
 

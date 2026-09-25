@@ -67,6 +67,28 @@ def get_unlinked_rows():
     return rows
 
 
+def get_by_id_full(signal_id: int):
+    """
+    یه ردیف کامل سیگنال، با هر id (لینک‌شده یا نه) — برخلاف
+    get_unlinked_rows که فقط لینک‌نشده‌ها رو می‌ده. برای خودترمیمیِ لحظه‌ای
+    تو site_sync.push_result_from_site لازمه: وقتی نتیجه‌ای برای سیگنالی
+    ثبت می‌شه که هنوز به ربات لینک نشده، این تابع داده‌ی لازم برای ساختن
+    اون لینک رو در همون لحظه فراهم می‌کنه.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""SELECT id, owner_telegram_id, coin, direction, note, channel,
+                        risk_level, created_at, caller_name, result, outcome_status
+                 FROM signals WHERE id=?""", (signal_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    cols = ["id", "owner_telegram_id", "coin", "direction", "note", "channel",
+            "risk_level", "created_at", "caller_name", "result", "outcome_status"]
+    return dict(zip(cols, row))
+
+
 def count_all() -> int:
     conn = get_db()
     c = conn.cursor()
@@ -309,7 +331,10 @@ def get_feed(limit: int = 200, offset: int = 0, status: str = None, channel: str
             "SELECT result, outcome_status, changed_at FROM signal_result_history WHERE signal_id=? ORDER BY changed_at",
             (row["id"],),
         )
-        row["history"] = [{"result": r[0], "outcome_status": r[1], "changed_at": r[2]} for r in c.fetchall()]
+        # ⚠️ همون فیکس _iso_utc که created_at گرفت، اینجا هم لازمه: changed_at
+        # هم با datetime.utcnow() بدون نشانگر منطقه‌ی زمانی ذخیره می‌شه، پس
+        # new Date() سمت کلاینت بدونش به‌غلط به‌عنوان ساعت محلی می‌خوندش.
+        row["history"] = [{"result": r[0], "outcome_status": r[1], "changed_at": _iso_utc(r[2])} for r in c.fetchall()]
         row["created_at"] = _iso_utc(row.get("created_at"))
         if row["tier"] == "vip" and not _viewer_has_vip_access(viewer, row["owner_telegram_id"]):
             for f in _VIP_GATED_FIELDS:

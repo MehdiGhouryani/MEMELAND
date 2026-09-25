@@ -418,17 +418,10 @@ async def handle_image_upload(request: web.Request) -> web.Response:
 
     filename = f"web_{uuid.uuid4().hex[:10]}.jpg"
 
-    if image_upload._enabled():
-        public_url = await image_upload.upload_web_image(raw_bytes, filename)
-    else:
-        from signal_bot.services.watermark import apply_watermark
-        processed_bytes = apply_watermark(raw_bytes)
-        upload_dir = os.path.join(_STATIC_DIR, "uploads")
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, filename)
-        with open(file_path, "wb") as f:
-            f.write(processed_bytes)
-        public_url = f"/static/uploads/{filename}"
+    # ⚠️ فال‌بک محلی حالا داخل image_upload._upload_bytes متمرکز شده (نگاه
+    # کن به services/image_upload.py) — این تابع دیگه لازم نیست بدونه
+    # Supabase تنظیم هست یا نه؛ فقط صدا می‌زنه و نتیجه رو چک می‌کنه.
+    public_url = await image_upload.upload_web_image(raw_bytes, filename)
 
     if not public_url:
         return _json_error(500, "خطا در پردازش و ذخیره تصویر")
@@ -649,20 +642,29 @@ async def handle_signals_result(request: web.Request) -> web.Response:
         f"botSync={'ok' if bot_synced else 'skip'}"
     )
 
-    return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")
+    # ⚠️ bot_synced قبلاً فقط تو لاگ سرور بود، نه تو پاسخ. اضافه کردنش به
+    # پاسخ باعث می‌شه فرانت‌اند (و تست‌ها) بدون نیاز به خواندن لاگ سرور
+    # بفهمن آیا سینک واقعاً انجام شده یا نه.
+    return web.json_response({"ok": ok, "bot_synced": bot_synced}) if ok else _json_error(404, "signal not found")
 
 
 async def handle_signals_delete(request: web.Request) -> web.Response:
-    if not _require_admin(request):
+    session = _require_admin(request)
+    if not session:
+        # ⚠️ لاگ تشخیصی: اگه حذف "کار نمی‌کنه" ولی هیچ خط SigDel ای تو لاگ
+        # نیست، یعنی درخواست اصلاً به این نقطه نرسیده (مشکل سمت کلاینت —
+        # مثلاً دیالوگ تأییدِ حذف نتونسته resolve بشه) نه اینکه سرور ردش کرده.
+        # این خط اون دو حالت رو از هم جدا می‌کنه.
+        logger.warning(f"SigDelDenied: path={request.path} hasAuthHeader={bool(request.headers.get('Authorization'))}")
         return _json_error(403, "دسترسی فقط برای ادمین")
 
     signal_id = _path_int(request, "id")
     if signal_id is None:
         return _json_error(400, "شناسه سیگنال نامعتبر است")
     from signal_bot.services import site_sync
-    site_sync.delete_from_site(signal_id)   # قبل از حذف، تا لینک هنوز موجود باشه
+    bot_del = site_sync.delete_from_site(signal_id)   # قبل از حذف سایت، تا لینک هنوز موجود باشه
     ok = signals.delete_signal(signal_id)
-    logger.info(f"SigDel: sid={signal_id}")
+    logger.info(f"SigDel: sid={signal_id} ok={ok} botDel={'ok' if bot_del else 'FAIL'} by={session.get('telegram_id')}")
     return web.json_response({"ok": ok}) if ok else _json_error(404, "signal not found")
 
 
@@ -690,8 +692,13 @@ async def handle_leaderboard(request: web.Request) -> web.Response:
         }
         for r in signal_giver_rows
     ]
+    callers = ratings.get_top_callers(limit=10)
+    # ⚠️ لاگ تشخیصی فشرده: اگه لیدربورد یه‌روز خالی یا عجیب دیده شد، این یه
+    # خط کافیه بفهمی مشکل از «داده‌ای نیست» بوده یا «فیلتر since اشتباهه» —
+    # بدون این، باید مستقیم رو دیتابیس کوئری می‌زدی.
+    logger.info(f"LeaderboardDeliver: period={period} since={since} givers={len(signal_givers)} callers={len(callers)}")
     return web.json_response({
-        "callers": ratings.get_top_callers(limit=10),
+        "callers": callers,
         "signal_givers": signal_givers,
     })
 

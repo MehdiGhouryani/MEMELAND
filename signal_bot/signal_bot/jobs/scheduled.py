@@ -7,6 +7,7 @@ from telegram.constants import ParseMode
 from signal_bot.config.settings import CHANNEL_ID
 from signal_bot.db import signals_repo
 from signal_bot.formatters.texts import leaderboard_text
+from signal_bot.logger import logger
 from signal_bot.services.notify import safe_send_message
 from signal_bot.services.price_feed import get_current_prices
 from signal_bot.site import signals as site_signals
@@ -41,7 +42,18 @@ async def check_entry_alerts(context: ContextTypes.DEFAULT_TYPE):
         price = prices.get((sig["chain"], sig["contract_address"].lower()))
         if price is None:
             continue
-        entry = sig["entry_price"]
+        # ⚠️ سخت‌سازی دفاعی: entry_price تو ستون REAL ذخیره می‌شه، ولی اگه
+        # یه‌جا (ویرایش دستی دیتابیس، یا یه فیلد ورودی آینده) رشته‌ی غیرعددی
+        # یا خالی توش بیفته، مقایسه‌ی float <= str بدون try/except کل حلقه
+        # رو برای *همه‌ی* سیگنال‌های این دور اجرا می‌ترکونه (چون هیچ
+        # try/except دور این تابع نیست) — یعنی یه ردیف داده‌ی بد، آلارم
+        # قیمت رو برای همه خاموش می‌کرد، هر ۴۵ ثانیه، تا کسی متوجه بشه.
+        try:
+            entry = float(sig["entry_price"])
+        except (TypeError, ValueError):
+            logger.warning("check_entry_alerts: entry_price نامعتبر sid=%s val=%r",
+                           sig["id"], sig["entry_price"])
+            continue
         # direction نبود/چیز دیگه‌ای بود -> پیش‌فرض 'long' (رایج‌ترین حالت تو این پروژه).
         hit = price >= entry if sig["direction"] == "short" else price <= entry
         if not hit:

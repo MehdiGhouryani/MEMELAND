@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from signal_bot.config import settings
 from signal_bot.site import auth
 from signal_bot.site.db import get_db
+from signal_bot.site.signals import _iso_utc
 from signal_bot.db import users_repo
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,12 @@ def get_trader_dossier(telegram_id: int) -> Optional[Dict[str, Any]]:
                 "channel": r[2],
                 "result": r[3],
                 "outcome_status": r[4],
-                "created_at": r[5],
+                # ⚠️ همون فیکس _iso_utc که get_feed گرفت: changed_at/created_at
+                # بدون نشانگر منطقه‌ی زمانی ذخیره می‌شن. الان بی‌ضرره چون
+                # dossier.js فعلاً created_at رو نمایش نمی‌ده، ولی برای
+                # سازگاری و جلوگیری از یه غافلگیری بعدی (اگه یه‌روز زمان
+                # نسبی «۳ ساعت پیش» به این کارت اضافه بشه)، همینجا هم اصلاح شد.
+                "created_at": _iso_utc(r[5]),
             }
             for r in c.fetchall()
         ]

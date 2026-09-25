@@ -234,6 +234,31 @@ const Views = {
 
       ${noteText ? `<p style="font-size:12.5px; line-height:1.8; color:var(--text-muted); margin-bottom:16px; white-space:pre-line;">${noteText}</p>` : ''}
 
+      ${(() => {
+        // ⚠️ این داده (history) از قبل توی جواب API بود ولی هیچ‌جای UI
+        // نمایش داده نمی‌شد — یعنی «بخش نتایج و سوابق» فقط لیست سیگنال‌های
+        // بسته‌شده رو نشون می‌داد، بدون اینکه سیر تغییر نتیجه‌ی هر کدوم
+        // (مثلاً از win_2x به win_5x) قابل مشاهده باشه. این بخش همون
+        // تاریخچه رو، جدیدترین اول، اضافه می‌کنه.
+        const hist = Array.isArray(s.history) ? s.history : [];
+        if (hist.length === 0) return '';
+        const rowsHtml = hist.slice().reverse().map(h => {
+          const cls = h.outcome_status === 'win' ? 'roi-win' : (h.outcome_status === 'loss' ? 'roi-loss' : 'roi-open');
+          const label = escapeHtml(h.result || (h.outcome_status === 'open' ? 'بازگشایی' : '—'));
+          let when = '';
+          try { when = new Date(h.changed_at).toLocaleString('fa-IR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) {}
+          return `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); font-size:11px;">
+                    <span class="roi-badge ${cls}" style="padding:2px 7px; font-size:9.5px;">${label}</span>
+                    <span class="mono" style="color:var(--text-dim); font-size:10px;">${escapeHtml(when)}</span>
+                  </div>`;
+        }).join('');
+        return `
+          <div style="margin-bottom:14px;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:6px;">📜 سوابق تغییر نتیجه</div>
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:2px 12px;">${rowsHtml}</div>
+          </div>`;
+      })()}
+
       ${(!window.Telegram?.WebApp?.initData && buyLink) ? `
         <a href="${buyLink}" target="_blank" class="btn btn-primary" style="margin-bottom:12px;">خرید مستقیم در صرافی / دکس ↗</a>
       ` : ''}

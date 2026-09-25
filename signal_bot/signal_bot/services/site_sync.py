@@ -43,13 +43,31 @@ async def push_signal_created(bot_signal_id: int, owner_telegram_id: int, coin: 
     caller_name رو صداکننده از users_repo می‌گیره و پاس می‌ده. signal_type
     استفاده نمی‌شه — مدل داده‌ی سایت اصلاً معادلی نداره.
     risk_level: فیچر جدید (خواسته‌ی شریک) — پیش‌فرض کم‌ریسک."""
+    from signal_bot.db import signals_repo
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         try:
-            site_signals.create_signal(
+            site_id = site_signals.create_signal(
                 owner_telegram_id=owner_telegram_id, caller_name=caller_name, channel=channel,
                 coin=coin or "", direction=direction, tier=tier, note=note or "", before_img=photo_url,
                 source="bot", bot_signal_id=bot_signal_id, risk_level=risk_level,
             )
+            # 🚨 فیکس: لینک معکوس (bot.signals.site_signal_id) اینجا هیچ‌وقت
+            # ست نمی‌شد — فقط جهت رفت (site.signals.bot_signal_id) ست می‌شد.
+            # نتیجه: برای سیگنال‌های *بومیِ ربات* (اکثریت قریب‌به‌اتفاق
+            # سیگنال‌ها، چون از /fullsignal میان)، signals_repo.get_by_site_id
+            # همیشه None برمی‌گردوند — یعنی delete_from_site و
+            # push_result_from_site (که این تابع رو صدا می‌زنن) نمی‌تونستن
+            # ردیف رباتی متناظر رو پیدا کنن. اثر عملی: حذف یه سیگنالِ
+            # بومیِ ربات از وب‌اپ، ردیفش رو از سایت پاک می‌کرد ولی تو
+            # دیتابیس ربات دست‌نخورده باقی می‌موند — یعنی همچنان تو
+            # لیدربورد/سوابق ربات دیده می‌شد، درست همون چیزی که «حذف
+            # نمی‌شن» توصیف می‌کنه، فقط این‌بار برای سیگنال‌های بومیِ ربات
+            # به‌جای سیگنال‌های وب‌اپ.
+            try:
+                signals_repo.link_site_id(bot_signal_id, site_id)
+            except Exception as e:
+                logger.warning("site_sync: لینک معکوس bot#%s → site#%s ناموفق: %s",
+                               bot_signal_id, site_id, e)
             logger.info("site_sync: سیگنال #%s به سایت منعکس شد (تلاش %s)", bot_signal_id, attempt)
             return True
         except sqlite3.IntegrityError:
@@ -225,8 +243,31 @@ def push_result_from_site(site_signal_id: int, result_text: str, outcome_status:
     from signal_bot.services import results
 
     bot_id = signals_repo.get_by_site_id(site_signal_id)
+
     if bot_id is None:
-        logger.info("site_sync: سیگنال سایت #%s معادل رباتی نداره (سیگنال قدیمی؟)", site_signal_id)
+        # 🚨 خودترمیمی: به‌جای فقط لاگ‌کردن و متوقف شدن، همین الان تلاش
+        # می‌کنیم لینک رو بسازیم — دقیقاً همون کاری که reconcile() انجام
+        # می‌ده، ولی به‌جای اینکه منتظر بمونیم ادمین یادش بیفته /sync_all
+        # بزنه. این دقیقاً برای سیگنال‌های سایت-محورِ قدیمی (قبل از دیپلوی
+        # سینک دوطرفه) اتفاق می‌افته و بدون این، ثبت نتیجه‌شون تا ابد فقط
+        # تو سایت می‌مونه و امتیاز/لیدربورد ربات هیچ‌وقت به‌روز نمی‌شه.
+        from signal_bot.site import signals as site_signals
+        row = site_signals.get_by_id_full(site_signal_id)
+        if row and row.get("owner_telegram_id"):
+            healed = push_signal_from_site(
+                site_signal_id=row["id"], owner_telegram_id=row["owner_telegram_id"],
+                coin=row["coin"], direction=row["direction"], note=row["note"] or "",
+                channel=row["channel"] or "alt", risk_level=row["risk_level"] or "low",
+                created_at=row["created_at"], display_name=row.get("caller_name"),
+            )
+            if healed:
+                bot_id = signals_repo.get_by_site_id(site_signal_id)
+                logger.info("site_sync: خودترمیمی site#%s → bot#%s قبل از ثبت نتیجه",
+                           site_signal_id, bot_id)
+
+    if bot_id is None:
+        logger.warning("site_sync: سیگنال سایت #%s بعد از تلاش خودترمیمی هم معادل رباتی پیدا نکرد",
+                       site_signal_id)
         return False
 
     key = site_result_to_bot_key(result_text, outcome_status)
